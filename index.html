@@ -1,0 +1,1836 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Strawberry</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&family=Figtree:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: one centered app column (mobile-first), full-bleed bands for "table mode". */
+:root {
+  --bg: #E9F5EE; --surface: #FFFFFF; --ink: #16251E; --muted: #52645A; --line: rgba(22,37,30,.11);
+  --coral: #E5484D; --coral-shadow: #B3333A; --gold: #F6C343; --on-gold: #16251E;
+  --blue: #2F6B4F; --table: #1D4A37; --ok: #16794A; --ok-bg: rgba(43,182,115,.15);
+  --danger: #B3261E; --chat: #DCF8C6; --chat-ink: #1B1B3A;
+  --header: #2F6B4F; --pink-soft: #FDE7EA;
+  --font-display: 'Bricolage Grotesque', 'Trebuchet MS', system-ui, sans-serif;
+  --font-body: 'Figtree', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0F1C16; --surface: #182920; --ink: #EAF2EC; --muted: #9DB3A6; --line: rgba(255,255,255,.12);
+  --coral-shadow: #9E2E35; --blue: #3E8A66; --table: #10291F; --ok: #5FD39A; --ok-bg: rgba(95,211,154,.15);
+  --danger: #FF8A80; --chat: #1F3B2A; --chat-ink: #E9F7EE;
+  --coral: #EF5D63; --header: #1E4A37; --pink-soft: #3A2428; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0F1C16; --surface: #182920; --ink: #EAF2EC; --muted: #9DB3A6; --line: rgba(255,255,255,.12);
+  --coral-shadow: #9E2E35; --blue: #3E8A66; --table: #10291F; --ok: #5FD39A; --ok-bg: rgba(95,211,154,.15);
+  --danger: #FF8A80; --chat: #1F3B2A; --chat-ink: #E9F7EE;
+  --coral: #EF5D63; --header: #1E4A37; --pink-soft: #3A2428; color-scheme: dark }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 16px; -webkit-tap-highlight-color: transparent; }
+#rt-root { min-height: 100%; display: flex; flex-direction: column; }
+.gutter { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.rt-display { font-family: var(--font-display); text-wrap: balance; }
+.demo-fab { position: fixed; right: calc(16px + env(safe-area-inset-right, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 50; display: flex; flex-direction: column; align-items: flex-end; gap: 12px; }
+button:focus-visible, textarea:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+@keyframes rt-pop { from { transform: scale(.94); opacity: .2 } to { transform: scale(1); opacity: 1 } }
+.rt-pop { animation: rt-pop .35s ease-out both; }
+@keyframes rt-slide { from { transform: translateY(-14px); opacity: .2 } to { transform: none; opacity: 1 } }
+.rt-slide { animation: rt-slide .4s ease-out both; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+
+<div id="rt-root"><p class="gutter" style="padding-block:24px;color:var(--muted)">Loading Strawberry…</p></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.1.4"></script>
+
+<script type="text/plain" id="rt-src">
+const { useState, useEffect, useRef, useMemo } = React;
+
+// =====================================================================
+// CONTENT — edit freely. Everything the app shows is pre-written here.
+// =====================================================================
+
+const APP_NAME = "Strawberry";
+// Paste the Apps Script web app URL (ends in /exec) after you deploy Code.gs.
+const API_URL = "https://script.google.com/macros/s/AKfycbzhoXrhnfcgcWELtI_jlJXDen-jKRkJl3y4jce4zArYUaxMmV9w68MfzFmjxxH9BNyT/exec";
+const LIVE = /^https:\/\/script\.google\.com\//.test(API_URL);
+const SESSION_KEY = "strawberry.session.v1";
+const HOOKS = {
+  "Boba crawl": { emoji: "🧋", title: "Boba crawl", place: "Sit down after the first cup" },
+  "Cook together": { emoji: "🍳", title: "Cook together", place: "One kitchen, one meal" },
+  Karaoke: { emoji: "🎤", title: "Karaoke", place: "A room where you can hear each other" },
+  Hike: { emoji: "🥾", title: "Hike", place: "One trail, then food" },
+  "Escape room": { emoji: "🔐", title: "Escape room", place: "One hour, then talk about it" },
+  Picnic: { emoji: "🧺", title: "Picnic", place: "A lawn and something to share" },
+};
+const activityOf = (title, place) => {
+  const known = HOOKS[title];
+  if (known) return { ...known, place: place || known.place };
+  return { emoji: "🍓", title: title || "The activity", place: place || "Somewhere you can sit and talk" };
+};
+async function api(action, data) {
+  const r = await fetch(API_URL, { method: "POST", body: JSON.stringify({ action, ...(data || {}) }) });
+  const text = await r.text();
+  let json;
+  try { json = JSON.parse(text); } catch { throw new Error("The server did not answer. Deploy the script as a web app, access: Anyone."); }
+  if (!json.ok) throw new Error(json.error || "Request failed.");
+  return json;
+}
+function peopleToPersonas(people) {
+  return (people || []).map((p) => ({
+    name: p.name, from: p.from, tag: standingLabel(p.standing), standing: p.standing, hook: p.hook,
+    color: p.color, answers: p.answers || {}, intro: p.intro || "", wish: p.wish || "",
+    vote: p.vote === "" || p.vote == null ? null : Number(p.vote), slot: p.slot || "", bye: p.bye || "",
+    hasCapsule: !!p.has_capsule, capsule: p.capsule || "", facts: null, person_id: p.person_id,
+  }));
+}
+
+// 8 onboarding cards, 4 options each.
+// Every option belongs to one of the card's 2 "vibes" (fam "a" or "b").
+// Same option = same pick. Same vibe = softer overlap (used when no same pick).
+const CARDS = [
+  { id: "drink", q: "Pick your fuel",
+    fams: { a: { label: "caffeine", group: "The Caffeine Committee" }, b: { label: "sweet sips", group: "The Sweet Sip Society" } },
+    options: [
+      { key: "coffee",   fam: "a", label: "Coffee",   emoji: "☕", group: "The Espresso Express",   activity: { title: "Coffee crawl",              emoji: "☕", place: "3 cafés, 1 afternoon, downtown Berkeley" } },
+      { key: "boba",     fam: "b", label: "Boba",     emoji: "🧋", group: "The Boba Council",       activity: { title: "Boba crawl on Telegraph",   emoji: "🧋", place: "Rank 3 boba spots, loser buys snacks" } },
+      { key: "matcha",   fam: "a", label: "Matcha",   emoji: "🍵", group: "The Matcha Ministry",    activity: { title: "Matcha tasting",            emoji: "🍵", place: "Find the greenest latte in Berkeley" } },
+      { key: "smoothie", fam: "b", label: "Smoothie", emoji: "🥤", group: "The Smoothie Operators", activity: { title: "Smoothie + farmers market", emoji: "🥤", place: "Saturday market, downtown" } },
+    ] },
+  { id: "movie", q: "Movie night pick?",
+    fams: { a: { label: "adrenaline", group: "The Adrenaline Club" }, b: { label: "feel-good", group: "The Feel-Good Club" } },
+    options: [
+      { key: "horror",   fam: "a", label: "Horror",   emoji: "👻", group: "The Scream Team",        activity: { title: "Horror movie night",          emoji: "👻", place: "Someone's living room + popcorn" } },
+      { key: "romcom",   fam: "b", label: "Rom-com",  emoji: "💘", group: "The Hopeless Romantics", activity: { title: "Rom-com marathon",            emoji: "💘", place: "Blankets, snacks, zero shame" } },
+      { key: "action",   fam: "a", label: "Action",   emoji: "💥", group: "The Stunt Doubles",      activity: { title: "Action movie at the theater", emoji: "💥", place: "Big screen, bigger popcorn" } },
+      { key: "animated", fam: "b", label: "Animated", emoji: "🎨", group: "The Cartoon Cabinet",    activity: { title: "Animated movie night",        emoji: "🎨", place: "Bring your favorite childhood snack" } },
+    ] },
+  { id: "music", q: "Friday night soundtrack?",
+    fams: { a: { label: "loud", group: "The Loud Table" }, b: { label: "low-key", group: "The Low-Key Lounge" } },
+    options: [
+      { key: "karaoke",  fam: "a", label: "Karaoke",        emoji: "🎤", group: "The Mic Droppers",     activity: { title: "Karaoke night",          emoji: "🎤", place: "A private karaoke room downtown" } },
+      { key: "playlist", fam: "b", label: "Chill playlist", emoji: "🎧", group: "The Aux Cord Society", activity: { title: "Playlist swap picnic",   emoji: "🎧", place: "Everyone brings 3 songs from home" } },
+      { key: "concert",  fam: "a", label: "Live concert",   emoji: "🎸", group: "The Front Row",        activity: { title: "Free campus concert",    emoji: "🎸", place: "See what's on at Lower Sproul" } },
+      { key: "podcast",  fam: "b", label: "Podcast walk",   emoji: "🎙️", group: "The Headphone Club",   activity: { title: "Podcast walk + debrief", emoji: "🎙️", place: "Same episode, then argue about it over tea" } },
+    ] },
+  { id: "hangout", q: "Ideal hangout?",
+    fams: { a: { label: "game night", group: "The Game Night Guild" }, b: { label: "out and about", group: "The Wanderers" } },
+    options: [
+      { key: "boardgames", fam: "a", label: "Board games",     emoji: "🎲", group: "The Dice Guild",     activity: { title: "Board game café session", emoji: "🎲", place: "A board game café near campus" } },
+      { key: "foodout",    fam: "b", label: "Food outing",     emoji: "🌮", group: "The Snack Squad",    activity: { title: "Taco crawl",              emoji: "🌮", place: "2 taquerias, 1 verdict" } },
+      { key: "escape",     fam: "a", label: "Escape room",     emoji: "🔐", group: "The Lock Pickers",   activity: { title: "Escape room challenge",   emoji: "🔐", place: "60 minutes, 4 brains, 1 door" } },
+      { key: "thrift",     fam: "b", label: "Thrift shopping", emoji: "🛍️", group: "The Thrift Raiders", activity: { title: "Thrift store challenge",  emoji: "🛍️", place: "$10 each, style someone else" } },
+    ] },
+  { id: "trip", q: "Weekend escape?",
+    fams: { a: { label: "nature", group: "The Trailblazers" }, b: { label: "city", group: "The City Hoppers" } },
+    options: [
+      { key: "mountains", fam: "a", label: "Mountain hike", emoji: "🏔️", group: "The Summit Society",     activity: { title: "Hike to the Big C",         emoji: "🏔️", place: "Meet at the stadium, 30 min up" } },
+      { key: "city",      fam: "b", label: "Big city",      emoji: "🏙️", group: "The Metro Mob",          activity: { title: "Day trip to San Francisco", emoji: "🏙️", place: "BART in, burritos in the Mission" } },
+      { key: "beach",     fam: "a", label: "Beach",         emoji: "🏖️", group: "The Salty Crew",         activity: { title: "Sunset at the Marina",      emoji: "🏖️", place: "Berkeley Marina, bring a jacket" } },
+      { key: "themepark", fam: "b", label: "Theme park",    emoji: "🎢", group: "The Rollercoaster Crew", activity: { title: "Arcade + mini golf",        emoji: "🎢", place: "Low stakes, high trash talk" } },
+    ] },
+  { id: "clock", q: "Your natural habitat?",
+    fams: { a: { label: "daylight", group: "The Sunrise Club" }, b: { label: "after dark", group: "The Night Owl Parliament" } },
+    options: [
+      { key: "early",       fam: "a", label: "Early bird",      emoji: "🌅", group: "The Early Birds",          activity: { title: "Farmers market breakfast", emoji: "🌅", place: "Saturday market, downtown" } },
+      { key: "night",       fam: "b", label: "Night owl",       emoji: "🦉", group: "The Night Owl Parliament", activity: { title: "Late-night dessert run",   emoji: "🦉", place: "Whatever is open after 10pm" } },
+      { key: "brunch",      fam: "a", label: "Brunch person",   emoji: "🥞", group: "The Brunch Bunch",         activity: { title: "Sunday brunch",            emoji: "🥞", place: "Pancakes, long table, no rush" } },
+      { key: "philosopher", fam: "b", label: "3am philosopher", emoji: "🌌", group: "The Deep Thinkers",        activity: { title: "Stargazing in the hills",  emoji: "🌌", place: "Bring a blanket and big questions" } },
+    ] },
+  { id: "food", q: "Dream dinner?",
+    fams: { a: { label: "homemade", group: "The Kitchen Cabinet" }, b: { label: "eat out", group: "The Menu Critics" } },
+    options: [
+      { key: "cook",       fam: "a", label: "Cook at home",     emoji: "🍳", group: "The Home Chefs",          activity: { title: "Cook-off night",         emoji: "🍳", place: "Two teams, one kitchen, one judge" } },
+      { key: "streetfood", fam: "b", label: "Street food",      emoji: "🌯", group: "The Food Truck Fan Club", activity: { title: "Food truck hunt",        emoji: "🌯", place: "Follow the longest line" } },
+      { key: "potluck",    fam: "a", label: "Potluck",          emoji: "🥘", group: "The Potluck Pact",        activity: { title: "Potluck dinner",         emoji: "🥘", place: "Everyone cooks one thing from home" } },
+      { key: "fancy",      fam: "b", label: "Fancy restaurant", emoji: "🍷", group: "The Fine Diners",         activity: { title: "Mystery cuisine dinner", emoji: "🍷", place: "A cuisine none of you have tried" } },
+    ] },
+  { id: "vibe", q: "Where do you hang?",
+    fams: { a: { label: "calm", group: "The Library Whisperers" }, b: { label: "buzzing", group: "The Buzz Brigade" } },
+    options: [
+      { key: "quiet",  fam: "a", label: "Quiet café",  emoji: "📚", group: "The Café Hermits",  activity: { title: "Cozy café + card game",    emoji: "📚", place: "A quiet café with a big table" } },
+      { key: "lively", fam: "b", label: "Lively spot", emoji: "🎉", group: "The Party Planners", activity: { title: "Open mic night",           emoji: "🎉", place: "Watch first, perform maybe" } },
+      { key: "picnic", fam: "a", label: "Park picnic", emoji: "🧺", group: "The Picnic Club",   activity: { title: "Picnic on Memorial Glade", emoji: "🧺", place: "Everyone brings one snack" } },
+      { key: "sports", fam: "b", label: "Sports game", emoji: "🏟️", group: "The Bleacher Crew", activity: { title: "Cal game day",             emoji: "🏟️", place: "Go Bears, loudly" } },
+    ] },
+];
+
+// What a secret mission can ask you to find out.
+// `hint` = a tip to ask casually. `guessAboutYou` = what a persona types when the mission is about you (demo only).
+const MISSION_TOPICS = {
+  dish:       { label: "favorite dish from home",       hint: "Ask what they'd eat first after landing back home.", guessAboutYou: "Something with noodles?" },
+  tradition:  { label: "favorite tradition from home",  hint: "Ask about their favorite holiday growing up.",        guessAboutYou: "New Year's Eve with family" },
+  expression: { label: "favorite expression from home", hint: "Ask how they'd say \"that's crazy\" back home.",      guessAboutYou: "\"No way!\"" },
+  talent:     { label: "hidden talent",                 hint: "Ask what they could teach the group in 5 minutes.",  guessAboutYou: "Can cook anything without a recipe" },
+  music:      { label: "favorite artist",               hint: "Ask what they'd play if they had the aux.",          guessAboutYou: "Probably Taylor Swift" },
+  movie:      { label: "favorite movie",                hint: "Ask what they'd rewatch on a bad day.",              guessAboutYou: "Something Marvel" },
+};
+// Your "from home" pick decides the topic of YOUR mission.
+const HOME_TO_TOPIC = { dish: "dish", tradition: "tradition", expression: "expression", other: "talent" };
+
+// 3 fictional personas. On EVERY card, the personas cover both vibes,
+// so any tester shares at least one vibe with someone.
+// `facts` exist only to simulate the demo: the real app never knows the answers,
+// the person being asked says if it's right. `wrong` = a believable wrong guess.
+const PERSONAS = [
+  { name: "Mei", from: "Taipei, Taiwan", tag: "International · Cog Sci", standing: "exchange", hook: "a boba crawl", color: "#E2553A",
+    answers: { drink: "boba", movie: "romcom", music: "playlist", hangout: "boardgames", trip: "mountains", clock: "night", food: "cook", vibe: "quiet" },
+    facts: {
+      dish:       { answer: "Beef noodle soup", wrong: "Dumplings" },
+      tradition:  { answer: "Lantern Festival", wrong: "Lunar New Year" },
+      expression: { answer: "\"Horse horse, tiger tiger\" (= so-so)", wrong: "\"Add oil\" (= you got this)" },
+      talent:     { answer: "Solves a Rubik's cube in under a minute", wrong: "Plays piano" },
+      music:      { answer: "Taylor Swift", wrong: "BLACKPINK" },
+      movie:      { answer: "Titanic", wrong: "Spirited Away" },
+    } },
+  { name: "Diego", from: "Guadalajara, Mexico", tag: "International · Exchange, Business", standing: "exchange", hook: "karaoke", color: "#1E9A60",
+    answers: { drink: "boba", movie: "horror", music: "karaoke", hangout: "foodout", trip: "beach", clock: "night", food: "streetfood", vibe: "lively" },
+    facts: {
+      dish:       { answer: "Tortas ahogadas", wrong: "Tacos al pastor" },
+      tradition:  { answer: "Día de Muertos altars", wrong: "Christmas posadas" },
+      expression: { answer: "\"¡No manches!\" (= no way!)", wrong: "\"¡Qué padre!\" (= how cool!)" },
+      talent:     { answer: "Dances a full cumbia routine", wrong: "Juggling" },
+      music:      { answer: "Rosalía", wrong: "Bad Bunny" },
+      movie:      { answer: "Pacific Rim", wrong: "Interstellar" },
+    } },
+  { name: "Jordan", from: "Oakland, CA", tag: "Local · Public Health", standing: "undergrad", hook: "a picnic", color: "#6A4BE8",
+    answers: { drink: "matcha", movie: "action", music: "concert", hangout: "escape", trip: "city", clock: "early", food: "potluck", vibe: "sports" },
+    facts: {
+      dish:       { answer: "Grandma's gumbo", wrong: "Burritos" },
+      tradition:  { answer: "Sunday picnics at Lake Merritt", wrong: "Thanksgiving" },
+      expression: { answer: "\"Break a leg\" (= good luck)", wrong: "\"Piece of cake\" (= super easy)" },
+      talent:     { answer: "Names every BART station in order", wrong: "Skateboarding" },
+      music:      { answer: "Eminem", wrong: "A$AP Rocky" },
+      movie:      { answer: "Rocky", wrong: "Black Panther" },
+    } },
+];
+
+// Answers used when you jump to a stage without doing onboarding.
+const DEFAULT_ANSWERS = { drink: "boba", movie: "horror", music: "karaoke", hangout: "boardgames", trip: "mountains", clock: "night", food: "cook", vibe: "lively" };
+
+const HOME_OPTIONS = [
+  { key: "dish", label: "A dish", emoji: "🍜" },
+  { key: "tradition", label: "A tradition", emoji: "🎎" },
+  { key: "expression", label: "An expression", emoji: "💬" },
+  { key: "other", label: "Something else", emoji: "✨" },
+];
+const STANDINGS = [
+  { key: "undergrad", label: "Berkeley undergrad" },
+  { key: "exchange", label: "Exchange student" },
+  { key: "grad", label: "Grad student" },
+];
+const standingLabel = (key) => (STANDINGS.find((s) => s.key === key) || {}).label || "Berkeley student";
+
+// Mini-game box: optional, low-risk icebreakers. Available in meeting 1 (if it gets quiet) and meeting 2.
+const MINI_GAMES = [
+  { id: "thread", title: "Common thread", emoji: "🧵", time: "2 min", timer: 120,
+    how: "Find 3 things ALL of you have in common. Obvious ones (\"we're students\") don't count." },
+  { id: "truths", title: "Two truths and a lie", emoji: "🤥", time: "5 min",
+    how: "Each person says 3 facts about themselves. One is fake. Everyone guesses the lie.",
+    deck: ["Stuck? Use: a place you've lived", "Stuck? Use: a food you refuse to eat", "Stuck? Use: a weird skill", "Stuck? Use: someone famous you've met", "Stuck? Use: your first job"] },
+  { id: "rather", title: "Would you rather", emoji: "🤔", time: "3 min",
+    how: "Read it out. Everyone points left or right on 3. Explain your pick in one sentence.",
+    deck: [
+      "Only eat food from home forever, or never eat it again?",
+      "A free flight home every month, or free rent in Berkeley?",
+      "Speak every language, or play every instrument?",
+      "Always be 10 minutes late, or always 20 minutes early?",
+      "Travel 20 years into the past, or 20 years into the future?",
+      "Live in Berkeley forever, or move to a new city every year?",
+    ] },
+  { id: "takes", title: "Mild takes", emoji: "🌶️", time: "3 min",
+    how: "Read the take. Thumbs up, down, or sideways. Defend yours in one sentence.",
+    deck: ["Breakfast for dinner beats dinner.", "Pineapple belongs on pizza.", "Rain is the best weather.", "Airport food is underrated.", "Replying \"k\" is rude.", "Cereal is a soup."] },
+  { id: "firsts", title: "Firsts", emoji: "🥇", time: "3 min",
+    how: "Draw a card. Everyone answers in one sentence, going around the table.",
+    deck: ["Your first concert", "The first thing you did in Berkeley", "Your first job", "The first time you missed home", "The first friend you made here", "Your first word in English (or another language)"] },
+  { id: "rose", title: "Rose, bud, thorn", emoji: "🌹", time: "4 min",
+    how: "Everyone shares a rose (a high point this week), a bud (something you're looking forward to) and a thorn (something annoying). Keep it light." },
+];
+
+// Group chat preview shown after the check-in (not a real chat, just the idea).
+const CHAT_PREVIEW = [
+  { from: "Diego", text: "that was so fun 🙌 same time next week?" },
+  { from: "Mei", text: "🧋 I'm in. I know a new boba place" },
+  { from: "Jordan", text: "I'll bring the Would You Rather cards lol" },
+];
+const LEFTOVER = {
+  Mei: { line: "The night market I miss is the one near my grandma.", bye: "下次見" },
+  Diego: { line: "I dance when I miss Guadalajara.", bye: "Nos vemos" },
+  Jordan: { line: "Lake Merritt on Sundays is how my family does weekends.", bye: "See you next time" },
+};
+const BERKELEY_LIST = {
+  Mei: "Find a night-market feeling in Berkeley",
+  Diego: "Dance somewhere that isn't a loud club",
+  Jordan: "Sunday picnic at Lake Merritt",
+};
+const PREMEET_CHAT = [
+  { from: "Mei", text: "I showed up for a boba crawl, not to make a new profile. Thursday works." },
+  { from: "Diego", text: "Same. If we have energy after, karaoke." },
+  { from: "Jordan", text: "I'm in for the crawl. I can walk from campus." },
+];
+const ACTIVITY_HOOKS = ["Boba crawl", "Cook together", "Karaoke", "Hike", "Escape room", "Picnic"];
+// Round 2 answers do not live in this file. Paste a Google Form formResponse URL and the entry ids.
+// Leave CHECKIN_FORM empty during the demo; answers stay in this browser until the form is connected.
+const CHECKIN_FORM = "";
+const FORM_ENTRIES = { again: "", met: "", reasons: "", connected: "", connectWhy: "", group: "" };
+const CHAT_TOOLS = [
+  { emoji: "📍", label: "Pick a place" },
+  { emoji: "📅", label: "Pick a date" },
+  { emoji: "🎲", label: "Mini-games" },
+];
+
+const ROUNDS = {
+  meetup1: { when: "Thursday · 5:30 pm", place: "A café with a big shared table", area: "5 min walk from Sproul Plaza", why: "Big table, no menus to hide behind.", wear: "Casual. You'll be sitting and talking, not dressing up." },
+  commonSuffix: "Suspicious.",
+  fallbacks: {
+    commonGround: "Zero overlap. Honestly? That just means more to talk about.",
+    groupName: "The Wildcards",
+    activities: [
+      { title: "Sunset walk to the Campanile", emoji: "🌇", place: "Meet at Sather Gate", because: "Low effort, high vibes" },
+      { title: "Botanical Garden stroll", emoji: "🌿", place: "UC Botanical Garden entrance", because: "Works for literally everyone" },
+    ],
+  },
+  slots: ["Sat · 2:00 pm", "Sun · 11:00 am", "Tue · 6:30 pm"],
+  checkinReasons: [
+    "The secret missions broke the ice", "More in common than expected", "Already knowing each other made it easy",
+    "The mini-games helped", "Planning the next one was easy", "Scheduling was hard", "It felt a bit awkward",
+  ],
+};
+// =====================================================================
+// ENGINE — compares the tester to the personas, then SELECTS content.
+// Nothing is generated: every output is a pre-written block above.
+// =====================================================================
+
+const optionOf = (card, key) => card.options.find((o) => o.key === key);
+
+function computeOverlaps(answers, personas) {
+  const people = [{ name: "You", answers }, ...personas];
+  const byCard = CARDS.map((card) => {
+    const exact = card.options.map((option) => ({ option, names: people.filter((p) => p.answers[card.id] === option.key).map((p) => p.name) }));
+    const fams = ["a", "b"].map((f) => ({ fam: f, info: card.fams[f], names: people.filter((p) => optionOf(card, p.answers[card.id])?.fam === f).map((p) => p.name) }));
+    return { card, exact, fams, yourOption: optionOf(card, answers[card.id]), yours: exact.find((g) => g.names.includes("You")), yourFam: fams.find((g) => g.names.includes("You")) };
+  });
+  const byPersona = personas.map((p) => ({
+    name: p.name,
+    same: CARDS.filter((c) => p.answers[c.id] === answers[c.id]).map((c) => c.id),
+    vibe: CARDS.filter((c) => optionOf(c, p.answers[c.id])?.fam === optionOf(c, answers[c.id])?.fam).map((c) => c.id),
+  }));
+  return { byCard, byPersona };
+}
+
+function whoTogether(names, both, all) {
+  const others = names.filter((n) => n !== "You");
+  if (names.length === 4) return `All 4 of you ${all}`;
+  if (others.length === 2) return `You, ${others[0]} & ${others[1]} ${all}`;
+  if (others.length > 2) return `${names.length} of you ${all}`;
+  if (others.length === 1) return `You and ${others[0]} ${both}`;
+  return "";
+}
+
+// Picks the biggest group that includes You (ties: first card).
+const biggest = (groups) => groups.reduce((best, g) => (g && g.names.length >= 2 && (!best || g.names.length > best.names.length) ? g : best), null);
+
+// Secret missions: a ring, so everyone has exactly one mission and is exactly one target.
+//   You -> the persona you share the FEWEST picks with (bridge the gap), topic = your "from home" pick
+//   -> next persona (favorite artist) -> last persona (favorite movie) -> You (hidden talent)
+// The app never knows the right answer: at the reveal, the target says right or wrong.
+// For the demo, personas' typed answers are simulated (the 2nd one is wrong on purpose).
+function assignMissions(answers, home, personas, byPersona, opts) {
+  if (!personas.length) return [];
+  opts = opts || {};
+  const t1 = byPersona.reduce((bi, p, i) => (p.same.length < byPersona[bi].same.length ? i : bi), 0);
+  const ring = [{ name: "You", isYou: true }, personas[t1], ...personas.filter((_, i) => i !== t1)];
+  const yourTopic = HOME_TO_TOPIC[home] || "talent";
+  const topics = personas.length === 3
+    ? [yourTopic, "music", "movie", yourTopic === "talent" ? "dish" : "talent"]
+    : ring.map((_, i) => (i === 0 ? yourTopic : "talent"));
+  return ring.map((guesser, i) => {
+    const target = ring[(i + 1) % ring.length];
+    const topic = topics[i];
+    const fact = target.isYou || !target.facts ? null : target.facts[topic];
+    const shared = target.isYou ? 0 : byPersona.find((b) => b.name === target.name).same.length;
+    let simulatedGuess = null;
+    if (!guesser.isYou) {
+      if (target.isYou) simulatedGuess = MISSION_TOPICS[topic].guessAboutYou;
+      else if (fact) simulatedGuess = personas.length === 3 && i === 2 ? fact.wrong : fact.answer;
+    }
+    return {
+      guesser: guesser.name, target: target.name, topic,
+      topicLabel: MISSION_TOPICS[topic].label, hint: MISSION_TOPICS[topic].hint,
+      reason: i === 0
+        ? (opts.live ? `${target.name} is at your table. Ask, then ask why it matters.` : `You share only ${shared} pick${shared === 1 ? "" : "s"} with ${target.name}. Time to fix that.`)
+        : "",
+      truth: fact ? fact.answer : null, // demo only
+      simulatedGuess,
+    };
+  });
+}
+
+function buildGame(answers, home, personas, opts) {
+  opts = opts || {};
+  const { byCard, byPersona } = computeOverlaps(answers, personas);
+  const noOverlap = byPersona.every((p) => p.vibe.length === 0);
+
+  // Rule 1: common ground + group name. Same pick first, then same vibe, then fallback.
+  const bestPick = biggest(byCard.map((d) => d.yours));
+  const bestVibe = biggest(byCard.map((d) => d.yourFam));
+  let commonGround, groupName;
+  if (bestPick) {
+    commonGround = `${whoTogether(bestPick.names, "both picked", "all picked")} ${bestPick.option.label} ${bestPick.option.emoji}. ${ROUNDS.commonSuffix}`;
+    groupName = bestPick.option.group;
+  } else if (bestVibe) {
+    commonGround = `${whoTogether(bestVibe.names, "are both", "are all")} on team ${bestVibe.info.label}. Close enough.`;
+    groupName = bestVibe.info.group;
+  } else {
+    commonGround = ROUNDS.fallbacks.commonGround;
+    groupName = ROUNDS.fallbacks.groupName;
+  }
+
+  // Rule 2: meeting 1 secret missions (see assignMissions).
+  const missions = assignMissions(answers, home, personas, byPersona, opts);
+
+  // Rule 3: next activities = most-shared picks, then shared vibes, then fallback ideas.
+  const activities = [];
+  const add = (a) => { if (activities.length < 2 && !activities.some((x) => x.title === a.title)) activities.push(a); };
+  byCard.map((d) => d.yours).filter((g) => g && g.names.length >= 2).sort((x, y) => y.names.length - x.names.length)
+    .forEach((g) => add({ ...g.option.activity, key: g.option.key, because: `You share ${g.option.label}`, fromFallback: false }));
+  byCard.filter((d) => d.yourFam && d.yourFam.names.length >= 2).sort((x, y) => y.yourFam.names.length - x.yourFam.names.length)
+    .forEach((d) => add({ ...d.yourOption.activity, key: d.yourOption.key, because: `Close to how you like to spend time (${d.yourFam.info.label})`, fromFallback: false }));
+  ROUNDS.fallbacks.activities.forEach((a) => add({ ...a, key: null, fromFallback: true }));
+
+  // A few shared interests, never a score. Exact picks first, then a shared style.
+  const exactShares = byCard.filter((d) => d.yours && d.yours.names.length >= 2)
+    .sort((a, b) => b.yours.names.length - a.yours.names.length).slice(0, 3)
+    .map((d) => ({ emoji: d.yours.option.emoji, label: d.yours.option.label }));
+  const vibeShares = exactShares.length ? [] : byCard.filter((d) => d.yourFam && d.yourFam.names.length >= 2)
+    .sort((a, b) => b.yourFam.names.length - a.yourFam.names.length).slice(0, 2)
+    .map((d) => ({ emoji: d.yourOption.emoji, label: d.yourFam.info.label }));
+  const shares = exactShares.length ? exactShares : vibeShares;
+  const mix = personas.map((p) => `${p.name} (${String(p.from || "").split(",")[0].trim()})`).join(", ");
+  const because = !personas.length
+    ? "You're the first one here. Share the code so the rest of the table can join."
+    : shares.length
+    ? `You were grouped because you share ${shares.map((s) => s.label).join(", ")}. Not a whole profile. Around the table: ${mix}.`
+    : opts.live
+    ? `You were grouped because you showed up for the same activity. Around the table: ${mix}.`
+    : `You were grouped because a mixed table of four beats waiting for a perfect match. Around the table: ${mix}.`;
+
+  return { byCard, byPersona, noOverlap, commonGround, groupName, missions, activities, shares, because };
+}
+
+// What the demo assumes happened if you skip meeting 1 with the demo menu.
+const defaultResults = (missions) => missions.map((m) => {
+  const guess = m.guesser === "You" ? m.truth : m.simulatedGuess;
+  const correct = m.truth ? guess === m.truth : true;
+  return { ...m, guess, correct };
+});
+
+// Fallback demo: personas who always picked the OTHER vibe than the tester.
+const mirrorPersonas = (answers) =>
+  PERSONAS.map((p) => ({ ...p, answers: Object.fromEntries(CARDS.map((c) => {
+    const yourFam = optionOf(c, answers[c.id])?.fam || "a";
+    return [c.id, c.options.find((o) => o.fam !== yourFam).key];
+  })) }));
+
+const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+
+// =====================================================================
+// TESTS — 3 scenarios + a coverage check, shown in the "Tests" view.
+// =====================================================================
+function runTests() {
+  const strong = buildGame(PERSONAS[0].answers, "dish", PERSONAS);
+  const partial = buildGame(DEFAULT_ANSWERS, "tradition", PERSONAS);
+  const none = buildGame(DEFAULT_ANSWERS, "other", mirrorPersonas(DEFAULT_ANSWERS));
+  let everyComboOverlaps = true;
+  for (let n = 0; n < 4 ** CARDS.length; n++) {
+    const ans = Object.fromEntries(CARDS.map((c, i) => [c.id, c.options[(n >> (2 * i)) & 3].key]));
+    if (!PERSONAS.some((p) => CARDS.some((c) => optionOf(c, p.answers[c.id]).fam === optionOf(c, ans[c.id]).fam))) { everyComboOverlaps = false; break; }
+  }
+  const ringOk = (g) => ["You", "Mei", "Diego", "Jordan"].every((n) => g.missions.filter((m) => m.guesser === n).length === 1 && g.missions.filter((m) => m.target === n).length === 1);
+  const aboutYou = (g) => g.missions.find((m) => m.target === "You");
+  return [
+    { name: "Strong overlap: tester answers exactly like Mei", checks: [
+      ["Mei shares 8/8 picks", strong.byPersona[0].same.length === 8],
+      ["Group name comes from a shared pick", strong.groupName !== ROUNDS.fallbacks.groupName],
+      ["Common-ground line names Mei", strong.commonGround.includes("Mei")],
+      ["Your mission targets someone other than Mei (you already match her)", strong.missions[0].target !== "Mei"],
+      ["Your mission topic is a dish from home", strong.missions[0].topic === "dish"],
+    ]},
+    { name: "Partial overlap: default demo tester", checks: [
+      ["Every persona shares at least one vibe", partial.byPersona.every((p) => p.vibe.length > 0)],
+      ["Your mission targets Jordan (0 shared picks)", partial.missions[0].target === "Jordan"],
+      ["Everyone has exactly 1 mission and is exactly 1 target", ringOk(partial)],
+      ["Your mission topic is a tradition from home", partial.missions[0].topic === "tradition"],
+      ["The app does not know the answer about you (you judge it)", aboutYou(partial).truth === null],
+      ["One simulated answer is wrong, so the 'wrong' path shows", partial.missions.some((m) => m.truth && m.simulatedGuess && m.simulatedGuess !== m.truth)],
+    ]},
+    { name: "No overlap: personas always pick the other vibe", checks: [
+      ["noOverlap flag is true", none.noOverlap === true],
+      ["Fallback group name used", none.groupName === ROUNDS.fallbacks.groupName],
+      ["Fallback common-ground line used", none.commonGround === ROUNDS.fallbacks.commonGround],
+      ["Both activities are fallbacks", none.activities.every((a) => a.fromFallback)],
+      ["Missions still work for everyone", ringOk(none)],
+      ["'Something else' gives you a hidden-talent mission", none.missions[0].topic === "talent"],
+      ["No topic is used twice when yours is 'talent'", new Set(none.missions.map((m) => m.topic)).size === 4],
+    ]},
+    { name: `Coverage: all ${(4 ** CARDS.length).toLocaleString("en-US")} possible testers`, checks: [["Every possible tester shares a vibe with at least 1 real persona", everyComboOverlaps]] },
+  ];
+}
+
+// =====================================================================
+// STORAGE (localStorage, with in-memory fallback if the browser blocks it)
+// =====================================================================
+const memory = {};
+const store = {
+  get(k, f) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : f; } catch { return k in memory ? memory[k] : f; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { memory[k] = v; } },
+  remove(k) { try { localStorage.removeItem(k); } catch { delete memory[k]; } },
+};
+const STATE_KEY = "strawberry.state.v1";
+const CHECKINS_KEY = "strawberry.checkins";
+
+function sendCheckin(row) {
+  const ids = Object.values(FORM_ENTRIES).filter(Boolean);
+  if (!CHECKIN_FORM || ids.length < 6) return;
+  const body = new URLSearchParams();
+  const map = {
+    again: row.again ? "Yes" : "No",
+    met: row.met ? "Yes" : "No",
+    reasons: row.reasons.join(", "),
+    connected: row.connected.join(", "),
+    connectWhy: row.connectWhy,
+    group: row.group,
+  };
+  Object.entries(FORM_ENTRIES).forEach(([key, id]) => body.append(id, map[key] || ""));
+  fetch(CHECKIN_FORM, { method: "POST", mode: "no-cors", body }).catch(() => {});
+}
+
+// =====================================================================
+// UI BUILDING BLOCKS
+// =====================================================================
+const YOU = { name: "You", color: "#FDB515", isYou: true };
+const CARD = "rounded-3xl bg-[var(--surface)] border border-[var(--line)]";
+
+function Screen({ children, center }) {
+  return <div className={`flex-1 w-full max-w-[560px] mx-auto gutter pt-6 pb-28 flex flex-col gap-5 ${center ? "justify-center" : ""}`}>{children}</div>;
+}
+
+function Btn({ children, onClick, ghost, dark, className = "", type }) {
+  const look = ghost
+    ? dark ? "bg-white/10 text-white border border-white/25" : "bg-[var(--surface)] text-[var(--ink)] border-2 border-[var(--line)]"
+    : "bg-[var(--coral)] text-white shadow-[0_4px_0_var(--coral-shadow)]";
+  return <button type={type} onClick={onClick} className={`w-full min-h-[56px] rounded-2xl px-5 py-3.5 text-lg font-semibold transition active:translate-y-0.5 active:scale-[.98] cursor-pointer ${look} ${className}`}>{children}</button>;
+}
+
+function Avatar({ p, size = 44 }) {
+  return <div className="rounded-full flex items-center justify-center font-bold shrink-0 rt-display"
+    style={{ width: size, height: size, background: p.color, color: p.isYou ? "#1B1B3A" : "#FFFFFF", fontSize: size * 0.42 }}>{p.name[0]}</div>;
+}
+
+function Chip({ children, dark }) {
+  return <span className={`inline-block self-start rounded-full px-3 py-1 text-xs font-bold tracking-wider uppercase ${dark ? "bg-white/15 text-[var(--gold)]" : "bg-[var(--blue)] text-[var(--gold)]"}`}>{children}</span>;
+}
+
+function Title({ children, dark, big }) {
+  return <h1 className={`rt-display font-extrabold leading-[1.05] ${big ? "text-4xl sm:text-5xl" : "text-3xl sm:text-4xl"} ${dark ? "text-white" : "text-[var(--ink)]"}`}>{children}</h1>;
+}
+
+function Timer({ seconds, label = "seconds left" }) {
+  const [left, setLeft] = useState(seconds);
+  useEffect(() => { if (left <= 0) return; const t = setTimeout(() => setLeft(left - 1), 1000); return () => clearTimeout(t); }, [left]);
+  const pct = (left / seconds) * 100;
+  const shown = left >= 60 ? `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}` : left;
+  return (
+    <div className="flex items-center gap-3">
+      <div className="w-20 h-20 rounded-full flex items-center justify-center shrink-0" style={{ background: `conic-gradient(var(--gold) ${pct}%, rgba(255,255,255,.14) 0)` }}>
+        <div className="w-16 h-16 rounded-full bg-[var(--table)] flex items-center justify-center rt-display font-extrabold text-white text-xl tabular-nums">{left > 0 ? shown : "⏰"}</div>
+      </div>
+      <p className="text-white/75 text-sm">{left > 0 ? label : "Time!"}</p>
+    </div>
+  );
+}
+
+// 4-option card: drag the card toward your pick, or tap it.
+// Grid positions: 0 top-left, 1 top-right, 2 bottom-left, 3 bottom-right.
+const DIRS = [[-1, -1], [1, -1], [-1, 1], [1, 1]];
+function PickCard({ card, onPick }) {
+  const [d, setD] = useState({ x: 0, y: 0 });
+  const [out, setOut] = useState(null);
+  const start = useRef(null), moved = useRef(0);
+  const quad = (x, y) => (x < 0 ? 0 : 1) + (y < 0 ? 0 : 2);
+  const pick = (i) => { if (out !== null) return; setOut(i); setTimeout(() => onPick(card.options[i].key), 240); };
+  const down = (e) => { start.current = { x: e.clientX, y: e.clientY }; moved.current = 0; e.currentTarget.setPointerCapture(e.pointerId); };
+  const move = (e) => {
+    if (!start.current) return;
+    const x = e.clientX - start.current.x, y = e.clientY - start.current.y;
+    moved.current = Math.max(moved.current, Math.hypot(x, y)); setD({ x, y });
+  };
+  const up = (e) => {
+    if (!start.current) return;
+    const x = e.clientX - start.current.x, y = e.clientY - start.current.y; start.current = null;
+    if (Math.hypot(x, y) > 80) return pick(quad(x, y));
+    if (moved.current < 8) {
+      const el = document.elementFromPoint(e.clientX, e.clientY)?.closest("[data-opt]");
+      if (el) return pick(+el.dataset.opt);
+    }
+    setD({ x: 0, y: 0 });
+  };
+  const cancel = () => { start.current = null; setD({ x: 0, y: 0 }); };
+  const active = Math.hypot(d.x, d.y) > 25 ? quad(d.x, d.y) : null;
+  const transform = out !== null ? `translate(${DIRS[out][0] * 600}px, ${DIRS[out][1] * 300}px) rotate(${DIRS[out][0] * 20}deg)` : `translate(${d.x}px, ${d.y}px) rotate(${d.x / 25}deg)`;
+  return (
+    <div onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={cancel}
+      className="select-none rounded-3xl bg-[var(--surface)] border border-[var(--line)] p-4 sm:p-5 shadow-[0_8px_0_var(--line)] cursor-grab"
+      style={{ transform, transition: start.current ? "none" : "transform .25s ease", touchAction: "none" }}>
+      <p className="text-center text-xs font-bold text-[var(--muted)] uppercase tracking-widest mb-1">Pick one</p>
+      <p className="rt-display text-center text-2xl sm:text-3xl font-extrabold mb-4">{card.q}</p>
+      <div className="grid grid-cols-2 gap-3">
+        {card.options.map((o, i) => (
+          <button key={o.key} data-opt={i} onClick={(e) => { if (e.detail === 0) pick(i); }}
+            className={`min-w-0 flex flex-col items-center justify-center gap-1.5 rounded-2xl py-6 sm:py-8 border-2 transition ${active === i || out === i ? "bg-[var(--coral)] text-white border-[var(--coral)] scale-105" : "bg-[var(--pink-soft)] border-transparent"}`}>
+            <span className="text-5xl sm:text-6xl">{o.emoji}</span>
+            <span className="rt-display font-bold text-base sm:text-lg text-center leading-tight px-2">{o.label}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// =====================================================================
+// STAGE 1 — ONBOARDING
+// =====================================================================
+function MintPage({ children }) {
+  return <div className="flex-1 flex flex-col bg-[var(--bg)]">{children}</div>;
+}
+
+function Onboarding(props) {
+  return <MintPage><OnboardingSteps {...props} /></MintPage>;
+}
+
+function OnboardingSteps({ onDone, cardsOnly, askSecret }) {
+  const [started, setStarted] = useState(!!cardsOnly);
+  const [i, setI] = useState(0);
+  const [answers, setAnswers] = useState({});
+  const [homeKey, setHomeKey] = useState(null);
+  const [standing, setStanding] = useState(null);
+  const [hook, setHook] = useState("");
+  const [hookError, setHookError] = useState("");
+  const [secret, setSecret] = useState("");
+  if (!started) return (
+    <Screen center>
+      <div className="rt-pop flex flex-col gap-5">
+        <div className="text-6xl">🍓</div>
+        <Title big>Connect with people, not just match.</Title>
+        <p className="text-lg text-[var(--muted)] max-w-[44ch]">Strawberry is for connection, not for making friends on a profile. The hook is an activity you do together. Then you meet again.</p>
+        <div className="rounded-3xl bg-[var(--surface)] border border-[var(--line)] p-5 flex flex-col gap-3.5">
+          <p className="text-xs font-bold uppercase tracking-widest text-[var(--muted)]">How it works</p>
+          {[
+            ["🃏", "Answer 9 quick cards", "About 30 seconds, no wrong answers."],
+            ["👋", "See your group", "Who's coming, why you were grouped, and the plan."],
+            ["☕", "Say hi, then meet", "A mission gets you into a real conversation. Then phones down."],
+            ["🔁", "Meet again", "Pick the next plan together, in a tap."],
+          ].map(([e, t, d], k) => (
+            <div key={t} className="flex items-start gap-3">
+              <span className="w-9 h-9 shrink-0 rounded-full bg-[var(--pink-soft)] flex items-center justify-center text-lg">{e}</span>
+              <div className="min-w-0"><p className="font-bold leading-tight">{k + 1}. {t}</p><p className="text-sm text-[var(--muted)]">{d}</p></div>
+            </div>
+          ))}
+        </div>
+        <p className="text-sm text-[var(--muted)]">No profiles to swipe. You show up to do one thing. The conversation comes from doing it.</p>
+        <Btn onClick={() => setStarted(true)}>Deal me in</Btn>
+      </div>
+    </Screen>
+  );
+  const done = i >= CARDS.length;
+  return (
+    <Screen>
+      <div className="flex gap-1.5" aria-label={`Card ${Math.min(i + 1, 9)} of 9`}>{[...CARDS, 0].map((_, k) => <div key={k} className={`h-2 flex-1 rounded-full ${k < i ? "bg-[var(--coral)]" : k === i ? "bg-[var(--gold)]" : "bg-[var(--surface)]"}`} />)}</div>
+      {!done ? (
+        <>
+          <PickCard key={CARDS[i].id} card={CARDS[i]} onPick={(key) => { setAnswers({ ...answers, [CARDS[i].id]: key }); setI(i + 1); }} />
+          <p className="text-center text-sm text-[var(--muted)]">↖ ↗ drag toward your pick, or tap it ↙ ↘</p>
+        </>
+      ) : homeKey && cardsOnly ? (
+        <div className="rt-pop flex flex-col gap-4 rounded-3xl bg-[var(--surface)] border border-[var(--line)] p-4 sm:p-5 shadow-[0_8px_0_var(--line)]">
+          <p className="text-center text-xs font-bold text-[var(--muted)] uppercase tracking-widest">Only you keep this</p>
+          <p className="rt-display text-2xl sm:text-3xl font-extrabold text-center">The true answer</p>
+          <p className="text-sm text-[var(--muted)] text-center">Your group never sees this sentence. At the table, they try to find it out by talking.</p>
+          <label htmlFor="secret" className="font-semibold">One true sentence</label>
+          <textarea id="secret" rows={2} maxLength={80} value={secret} onChange={(e) => { setSecret(e.target.value); setHookError(""); }} placeholder="Beef noodle soup from the shop by my grandma" className="w-full rounded-2xl border-2 border-[var(--line)] bg-[var(--bg)] p-3 text-lg text-[var(--ink)] resize-none" />
+          {hookError && <p className="text-sm text-[var(--danger)]">{hookError}</p>}
+          <Btn onClick={() => {
+            if (!askSecret) return onDone(answers, homeKey, "");
+            if (secret.trim().length < 2) return setHookError("Add the true answer. The group does not see it.");
+            onDone(answers, homeKey, secret.trim());
+          }}>Join the table</Btn>
+        </div>
+      ) : homeKey ? (
+        <div className="rt-pop flex flex-col gap-4 rounded-3xl bg-[var(--surface)] border border-[var(--line)] p-4 sm:p-5 shadow-[0_8px_0_var(--line)]">
+          <p className="text-center text-xs font-bold text-[var(--muted)] uppercase tracking-widest">Your hook</p>
+          <p className="rt-display text-2xl sm:text-3xl font-extrabold text-center">What do you want to do together?</p>
+          <p className="text-sm text-[var(--muted)] text-center">The hook is the activity, not a fact about you. That is what puts you at the table.</p>
+          <div className="flex flex-wrap gap-2 justify-center">
+            {STANDINGS.map((s) => (
+              <button key={s.key} onClick={() => { setStanding(s.key); setHookError(""); }} className={`min-h-[44px] rounded-full px-4 py-2 text-sm font-semibold border-2 cursor-pointer ${standing === s.key ? "bg-[var(--blue)] text-[var(--gold)] border-[var(--blue)]" : "bg-[var(--surface)] border-[var(--line)]"}`}>{s.label}</button>
+            ))}
+          </div>
+          {standing === "grad" && <p className="text-sm text-[var(--muted)]">Grad students in round 1 mostly showed up for a class reason. Stay if you actually want to meet again.</p>}
+          <div className="flex flex-wrap gap-2">
+            {ACTIVITY_HOOKS.map((a) => (
+              <button key={a} onClick={() => { setHook(a); setHookError(""); }} className={`min-h-[44px] rounded-full px-4 py-2 text-sm font-semibold border-2 cursor-pointer ${hook === a ? "bg-[var(--coral)] text-white border-[var(--coral)]" : "bg-[var(--surface)] border-[var(--line)]"}`}>{a}</button>
+            ))}
+          </div>
+          <label htmlFor="hook" className="font-semibold">Or name the activity</label>
+          <input id="hook" maxLength={40} value={hook} onChange={(e) => { setHook(e.target.value); setHookError(""); }} placeholder="A boba crawl, not my life story" className="w-full rounded-2xl border-2 border-[var(--line)] bg-[var(--bg)] p-3 text-lg text-[var(--ink)]" />
+          {hookError && <p className="text-sm text-[var(--danger)]">{hookError}</p>}
+          <Btn onClick={() => {
+            if (!standing) return setHookError("Say if you're an undergrad, an exchange student, or a grad student.");
+            if (hook.trim().length < 2) return setHookError("Name the activity. That is the hook.");
+            onDone(answers, homeKey, standing, hook.trim());
+          }}>This is the activity</Btn>
+        </div>
+      ) : (
+        <div className="rt-pop flex flex-col gap-4 rounded-3xl bg-[var(--surface)] border border-[var(--line)] p-4 sm:p-5 shadow-[0_8px_0_var(--line)]">
+          <p className="text-center text-xs font-bold text-[var(--muted)] uppercase tracking-widest">Last card</p>
+          <p className="rt-display text-2xl sm:text-3xl font-extrabold text-center">What would you love to talk about from where you're from?</p>
+          <div className="grid grid-cols-2 gap-3">
+            {HOME_OPTIONS.map((o) => (
+              <button key={o.key} onClick={() => setHomeKey(o.key)} className="rounded-2xl bg-[var(--pink-soft)] border-2 border-transparent py-6 flex flex-col items-center gap-2 active:scale-95 transition cursor-pointer hover:border-[var(--coral)]">
+                <span className="text-4xl">{o.emoji}</span><span className="font-semibold">{o.label}</span>
+              </button>
+            ))}
+          </div>
+          <p className="text-center text-sm text-[var(--muted)]">🤫 Your group won't see this. It only shapes your secret mission.</p>
+        </div>
+      )}
+      {(i > 0 || homeKey) && (
+        <button onClick={() => (homeKey ? setHomeKey(null) : setI(i - 1))} className="self-center min-h-[44px] px-5 rounded-full border border-[var(--line)] bg-[var(--surface)] text-sm font-semibold text-[var(--muted)] hover:text-[var(--ink)] cursor-pointer active:scale-95 transition">
+          ← Previous card
+        </button>
+      )}
+    </Screen>
+  );
+}
+// =====================================================================
+// STAGE 2 — GROUP REVEAL
+// =====================================================================
+function GroupReveal({ game, personas, state, next, live, plan }) {
+  const you = { ...YOU, standing: state.standing || "undergrad", hook: state.hook || "a boba crawl" };
+  const people = [you, ...personas];
+  const activity = live ? activityOf(state.activity, state.place) : game.activities[0];
+  const when = plan?.when || ROUNDS.meetup1.when;
+  const place = plan?.place || ROUNDS.meetup1.place;
+  const link = live && state.code ? `${location.origin}${location.pathname}?room=${state.code}` : "";
+  const [copied, setCopied] = useState(false);
+  return (
+    <Screen>
+      <div className="flex items-center gap-2"><Chip>Verified Berkeley students</Chip>{live ? <span className="text-xs font-bold tracking-widest text-[var(--muted)]">CODE {state.code}</span> : <span className="text-xs text-[var(--muted)]">demo group</span>}</div>
+      <Title>Your group, {game.groupName}</Title>
+      <p className="text-[var(--muted)]">You were not matched as friends. The hook is one activity.</p>
+      <div className="rounded-3xl bg-[var(--coral)] text-white p-5">
+        <p className="text-xs font-bold uppercase tracking-widest text-white/80">The hook</p>
+        <p className="rt-display text-3xl font-extrabold mt-1">{activity.emoji} {activity.title}</p>
+        <p className="mt-1 text-white/90">{activity.place}</p>
+      </div>
+      <div className={`${CARD} p-4 flex flex-col gap-3`}>
+        {people.map((p) => (
+          <div key={p.name} className="flex items-center gap-3 min-w-0">
+            <Avatar p={p} size={40} />
+            <div className="min-w-0">
+              <p className="font-bold leading-tight">{p.name} <span className="font-semibold text-[var(--muted)]">· {standingLabel(p.standing)}</span></p>
+              <p className="text-sm text-[var(--muted)]">{p.isYou ? "Berkeley" : p.from}</p>
+              <p className="text-sm">Showed up for <b>{p.hook}</b></p>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="rounded-3xl bg-[var(--blue)] text-white p-5">
+        <p className="text-[var(--gold)] text-xs font-bold uppercase tracking-widest mb-1">Why this group</p>
+        <p className="rt-display text-2xl font-bold leading-snug">{game.because}</p>
+      </div>
+      <div className={`${CARD} p-5 flex flex-col gap-3`}>
+        <p className="text-xs font-bold uppercase tracking-widest text-[var(--coral)]">What you share</p>
+        {game.shares.length ? (
+          <div className="flex flex-wrap gap-2">
+            {game.shares.map((s) => <span key={s.label} className="rounded-full bg-[var(--gold)]/30 px-3 py-1.5 text-sm font-semibold">{s.emoji} {s.label}</span>)}
+          </div>
+        ) : <p className="text-[var(--muted)]">Nothing obvious on the cards. The table is still the point.</p>}
+        <p className="text-sm text-[var(--muted)]">{game.commonGround}</p>
+      </div>
+      <div className={`${CARD} p-5`}>
+        <p className="text-xs font-bold uppercase tracking-widest text-[var(--coral)] mb-2">First meetup</p>
+        <p className="rt-display text-xl font-bold">📅 {when}</p>
+        <p className="mt-1">☕ {place}</p>
+        {!live && <p className="text-sm text-[var(--muted)]">📍 {ROUNDS.meetup1.area}</p>}
+        <p className="text-sm text-[var(--muted)]">👕 {ROUNDS.meetup1.wear}</p>
+        <p className="text-sm text-[var(--muted)] mt-2 italic">{live ? "Same activity, same table." : ROUNDS.meetup1.why}</p>
+      </div>
+      {live && (
+        <div className={`${CARD} p-4 flex flex-col gap-2`}>
+          <p className="text-xs font-bold uppercase tracking-widest text-[var(--muted)]">Invite link</p>
+          <p className="font-semibold break-all">{link}</p>
+          <Btn ghost onClick={() => { navigator.clipboard.writeText(link).then(() => setCopied(true)).catch(() => setCopied(false)); }}>Copy link</Btn>
+          {copied && <p className="text-sm text-[var(--ok)] font-semibold">Copied. Send it to the people coming.</p>}
+        </div>
+      )}
+      <Btn onClick={() => { if (personas.length) next(); }} className={personas.length ? "" : "opacity-50"}>{personas.length ? "Say hi in the group chat →" : "Waiting for someone to join"}</Btn>
+    </Screen>
+  );
+}
+
+function CrewChat({ game, personas, next, live, plan, intro, onIntro }) {
+  const [text, setText] = useState("");
+  const [mine, setMine] = useState(intro || "");
+  const [error, setError] = useState("");
+  const when = plan?.when || ROUNDS.meetup1.when;
+  const place = plan?.place || ROUNDS.meetup1.place;
+  const thread = live
+    ? personas.filter((p) => p.intro).map((p) => ({ from: p.name, text: p.intro, person: p }))
+    : PREMEET_CHAT.map((msg) => ({ ...msg, person: personas.find((x) => x.name === msg.from) }));
+  const send = (e) => {
+    e.preventDefault();
+    if (!text.trim()) return setError("Say who you are in one line. The others already did.");
+    const line = text.trim();
+    setMine(line);
+    setText("");
+    setError("");
+    if (onIntro) onIntro(line);
+  };
+  return (
+    <Screen>
+      <Chip>Before Thursday</Chip>
+      <Title>{game.groupName}</Title>
+      <p className="text-[var(--muted)]">Introduce yourself here. The plan stays pinned so nobody has to hunt for it.</p>
+      <div className="rounded-2xl bg-[var(--blue)] text-white p-4">
+        <p className="text-xs font-bold uppercase tracking-widest text-[var(--gold)]">Pinned plan</p>
+        <p className="font-semibold mt-1">{when}</p>
+        <p className="text-sm text-white/85">{place}{live ? "" : ` · ${ROUNDS.meetup1.area}`}</p>
+        <p className="text-sm text-white/85">{ROUNDS.meetup1.wear}</p>
+      </div>
+      <div className={`${CARD} p-4 flex flex-col gap-3`}>
+        {thread.map((msg) => (
+            <div key={msg.from} className="flex items-end gap-2">
+              <Avatar p={msg.person || YOU} size={30} />
+              <div className="rounded-2xl rounded-bl-sm bg-[var(--bg)] px-3 py-2"><p className="text-xs font-bold text-[var(--muted)]">{msg.from}</p><p>{msg.text}</p></div>
+            </div>
+        ))}
+        {!thread.length && live && <p className="text-sm text-[var(--muted)]">Nobody has said hi yet. You go first.</p>}
+        {mine && (
+          <div className="flex items-end gap-2 justify-end">
+            <div className="rounded-2xl rounded-br-sm bg-[var(--chat)] text-[var(--chat-ink)] px-3 py-2 max-w-[80%]"><p className="text-xs font-bold opacity-70">You</p><p>{mine}</p></div>
+            <Avatar p={YOU} size={30} />
+          </div>
+        )}
+      </div>
+      {!mine ? (
+        <form onSubmit={send} className="flex flex-col gap-3">
+          <label htmlFor="intro" className="font-semibold">Your intro</label>
+          <textarea id="intro" rows={2} maxLength={120} value={text} onChange={(e) => { setText(e.target.value); setError(""); }} placeholder="Name, what you study, one thing you're into" className="w-full rounded-2xl border-2 border-[var(--line)] bg-[var(--surface)] p-3 text-lg text-[var(--ink)] resize-none" />
+          <Btn type="submit">Send</Btn>
+        </form>
+      ) : <p className="text-sm text-[var(--ok)] font-semibold">You're in. See you Thursday.</p>}
+      {error && <p className="text-sm text-[var(--danger)] -mt-2">{error}</p>}
+      <Btn ghost onClick={() => (mine ? next() : setError("Introduce yourself first."))}>It's Thursday →</Btn>
+    </Screen>
+  );
+}
+
+// =====================================================================
+// TABLE MODE + MINI-GAME BOX (shared by meeting 1 and 2)
+// =====================================================================
+function TableShell({ title, chip = "📱 Table mode", center, children }) {
+  return (
+    <div className="flex-1 flex flex-col bg-[var(--table)] text-white">
+      <div className={`flex-1 w-full max-w-[560px] mx-auto gutter pt-6 pb-28 flex flex-col gap-5 ${center ? "justify-center" : ""}`}>
+        <Chip dark>{chip}</Chip>
+        {title && <Title dark>{title}</Title>}
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function OpeningDeck({ deck }) {
+  const [card, setCard] = useState(0);
+  return (
+    <>
+      <div key={card} className="rounded-3xl bg-[var(--gold)] text-[var(--on-gold)] p-6 min-h-[140px] flex items-center justify-center text-center rt-pop">
+        <p className="rt-display text-2xl font-extrabold leading-snug">{deck[card % deck.length]}</p>
+      </div>
+      <Btn ghost dark onClick={() => setCard(card + 1)}>Next prompt ({(card % deck.length) + 1}/{deck.length})</Btn>
+    </>
+  );
+}
+
+function MiniGame({ game, onBack }) {
+  const [card, setCard] = useState(0);
+  const [timerOn, setTimerOn] = useState(false);
+  return (
+    <div className="flex flex-col gap-4 rt-pop">
+      <button onClick={onBack} className="self-start text-white/80 font-semibold cursor-pointer min-h-[44px]">← All mini-games</button>
+      <div className="flex items-center gap-3"><span className="text-5xl">{game.emoji}</span><div><p className="rt-display text-2xl font-extrabold">{game.title}</p><p className="text-white/70 text-sm">{game.time}</p></div></div>
+      <p className="rounded-2xl bg-white/10 p-4 text-lg">{game.how}</p>
+      {game.deck && (
+        <>
+          <div key={card} className="rounded-3xl bg-[var(--gold)] text-[var(--on-gold)] p-6 min-h-[150px] flex items-center justify-center text-center rt-pop">
+            <p className="rt-display text-2xl font-extrabold leading-snug">{game.deck[card % game.deck.length]}</p>
+          </div>
+          <Btn ghost dark onClick={() => setCard(card + 1)}>Next card ({(card % game.deck.length) + 1}/{game.deck.length})</Btn>
+        </>
+      )}
+      {game.timer && (timerOn ? <Timer seconds={game.timer} label="to find your common threads" /> : <Btn ghost dark onClick={() => setTimerOn(true)}>⏱️ Start the {game.time} timer</Btn>)}
+    </div>
+  );
+}
+
+function MiniGameBox({ onClose, closeLabel }) {
+  const [game, setGame] = useState(null);
+  if (game) return <MiniGame game={game} onBack={() => setGame(null)} />;
+  return (
+    <div className="flex flex-col gap-4 rt-pop">
+      <div><p className="rt-display text-2xl font-extrabold">🎲 Mini-game box</p><p className="text-white/75">Optional. Pick one if the conversation needs a nudge. No points, no losers.</p></div>
+      <div className="grid grid-cols-2 gap-3">
+        {MINI_GAMES.map((g) => (
+          <button key={g.id} onClick={() => setGame(g)} className="text-left rounded-2xl bg-white/10 border border-white/15 p-4 cursor-pointer hover:bg-white/20 active:scale-[.98] transition min-w-0">
+            <span className="text-3xl">{g.emoji}</span>
+            <p className="font-bold mt-2 leading-tight">{g.title}</p>
+            <p className="text-xs text-white/65 mt-1">{g.time}</p>
+          </button>
+        ))}
+      </div>
+      {onClose && <Btn ghost dark onClick={onClose}>{closeLabel}</Btn>}
+    </div>
+  );
+}
+
+// =====================================================================
+// STAGE 3 — MEETING 1: SECRET MISSIONS
+// =====================================================================
+const possessive = (name) => (name === "You" ? "your" : `${name}'s`);
+
+function MissionCard({ m, personas }) {
+  const target = personas.find((p) => p.name === m.target);
+  return (
+    <div className="rounded-3xl bg-[var(--surface)] text-[var(--ink)] p-5 flex flex-col gap-3 rt-pop">
+      <p className="text-xs uppercase tracking-widest font-bold text-[var(--coral)]">🕵️ Your secret mission</p>
+      <div className="flex items-center gap-3"><Avatar p={target} size={52} /><p className="rt-display text-2xl font-extrabold leading-tight">Find out {m.target}'s {m.topicLabel}.</p></div>
+      {m.reason && <p className="text-[var(--muted)]">{m.reason}</p>}
+      <p className="rounded-2xl bg-[var(--bg)] p-3 text-sm"><b>Smooth move:</b> {m.hint} Don't make it obvious.</p>
+      <p className="rounded-2xl bg-[var(--gold)]/25 p-3 text-sm"><b>While you do it:</b> they showed up for {target.hook}. Get the answer, then ask why it matters. That is the connection, and why you meet again.</p>
+    </div>
+  );
+}
+
+function MissionBriefing({ game, personas, onReady }) {
+  const [shown, setShown] = useState(false);
+  return (
+    <TableShell title="Secret missions 🕵️">
+      <p className="text-white/85 text-lg">This is not a points game. Find one true thing, then ask why it matters. Before you leave, you reveal together, and you leave with a reason to meet again.</p>
+      {!shown ? (
+        <button onClick={() => setShown(true)} className="rounded-3xl bg-[var(--gold)] text-[var(--on-gold)] p-8 flex flex-col items-center gap-2 cursor-pointer active:scale-[.98] transition">
+          <span className="text-6xl">✉️</span>
+          <span className="rt-display text-2xl font-extrabold">Open your mission</span>
+          <span className="text-sm font-semibold">Make sure nobody's looking 👀</span>
+        </button>
+      ) : (
+        <>
+          <MissionCard m={game.missions[0]} personas={personas} />
+          <p className="text-white/75">{personas.map((p) => p.name).join(", ")} got missions too. One of them is about you. 👀</p>
+          <Btn onClick={onReady}>Got it, hide my mission</Btn>
+        </>
+      )}
+    </TableShell>
+  );
+}
+
+function MissionInProgress({ game, personas, onEnd }) {
+  const [peek, setPeek] = useState(false);
+  const [box, setBox] = useState(false);
+  if (box) return <TableShell chip="📱 Meeting 1"><MiniGameBox onClose={() => setBox(false)} closeLabel="Back to the meetup" /></TableShell>;
+  return (
+    <TableShell chip="📱 Meeting 1" title="Mission in progress">
+      <p className="text-white/85 text-lg">Phone down. Order something, talk, and work your mission into the conversation.</p>
+      {peek && <MissionCard m={game.missions[0]} personas={personas} />}
+      <Btn ghost dark onClick={() => setPeek(!peek)}>{peek ? "🙈 Hide my mission" : "👀 Peek at my mission"}</Btn>
+      <Btn ghost dark onClick={() => setBox(true)}>🎲 Awkward silence? Open the mini-game box</Btn>
+      <div className="h-px bg-white/15" />
+      <p className="text-white/70 text-sm">About to leave? Time to write down what you found out.</p>
+      <Btn onClick={onEnd}>⏰ End of meetup: answer time</Btn>
+    </TableShell>
+  );
+}
+
+// Answer time: the phone goes around, everyone types their answer privately.
+function MissionAnswers({ game, personas, onDone, solo }) {
+  const missions = solo ? game.missions.filter((m) => m.guesser === "You") : game.missions;
+  const [i, setI] = useState(0);
+  const [text, setText] = useState("");
+  const [error, setError] = useState("");
+  const [typed, setTyped] = useState({});
+  const m = missions[i];
+  const person = m.guesser === "You" ? YOU : personas.find((p) => p.name === m.guesser);
+  const advance = (answer) => {
+    const all = { ...typed, [m.guesser]: answer };
+    setTyped(all); setText(""); setError("");
+    if (i < missions.length - 1) setI(i + 1); else onDone(all);
+  };
+  const submit = (e) => {
+    e.preventDefault();
+    if (!text.trim()) return setError("Type what you found out first. A guess is fine.");
+    advance(text.trim());
+  };
+  return (
+    <TableShell title="Answer time ✍️">
+      <p className="text-white/70 text-sm font-semibold">Pass the phone · {i + 1}/{missions.length}</p>
+      <div key={i} className="rounded-3xl bg-[var(--surface)] text-[var(--ink)] p-5 flex flex-col gap-4 rt-pop">
+        <div className="flex items-center gap-3"><Avatar p={person} size={52} /><p className="rt-display text-2xl font-extrabold">{m.guesser === "You" ? "Your turn" : `${m.guesser}'s turn`}</p></div>
+        {m.guesser === "You" ? (
+          <form onSubmit={submit} className="flex flex-col gap-3">
+            <label htmlFor="mission-answer" className="text-lg">What's <b>{m.target}'s {m.topicLabel}</b>?</label>
+            <textarea id="mission-answer" rows={2} maxLength={80} value={text} onChange={(e) => { setText(e.target.value); setError(""); }}
+              placeholder="Type it fast, nobody's looking"
+              className="w-full rounded-2xl border-2 border-[var(--line)] bg-[var(--bg)] p-3 text-lg text-[var(--ink)] resize-none" />
+            {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
+            <Btn type="submit">Lock my answer 🔒</Btn>
+          </form>
+        ) : (
+          <>
+            <p className="text-lg">{m.guesser} takes the phone and types their answer. Everyone else looks away. 🙈</p>
+            <p className="text-sm text-[var(--muted)]">Demo: {m.guesser}'s answer is simulated.</p>
+            <Btn onClick={() => advance(m.simulatedGuess)}>{m.guesser} locked their answer 🔒</Btn>
+          </>
+        )}
+      </div>
+    </TableShell>
+  );
+}
+
+// Reveal: phone in the middle. Each answer is shown, and the person it's about says right or wrong.
+// A wrong answer never blocks meeting 2.
+function MissionReveal({ game, personas, typed, onDone, solo }) {
+  const missions = solo ? game.missions.filter((m) => m.guesser === "You") : game.missions;
+  const [i, setI] = useState(0);
+  const [verdict, setVerdict] = useState(null);
+  const [asked, setAsked] = useState(null);
+  const [results, setResults] = useState([]);
+  const person = (n) => (n === "You" ? YOU : personas.find((p) => p.name === n));
+  const total = missions.length;
+
+  if (i >= total) {
+    const cracked = results.filter((r) => r.correct).length;
+    const all = cracked === total;
+    return (
+      <TableShell title={all ? "Perfect sync 🔥" : `${cracked}/${total} missions cracked`}>
+        <p className="text-white/85 text-lg">{all ? "Every mission cracked. You were clearly paying attention." : "Wrong answers just meant better stories. Nobody gets left behind."}</p>
+        <div className="rounded-3xl bg-[var(--gold)] text-[var(--on-gold)] p-5 rt-pop"><p className="rt-display text-2xl font-extrabold">The score was never the point</p><p className="mt-1">What you asked, and what you didn't say, is what meeting 2 opens.</p></div>
+        <CrewList results={results} personas={personas} dark />
+        <Btn onClick={() => onDone(results)}>Wrap up meeting 1 →</Btn>
+      </TableShell>
+    );
+  }
+
+  const m = missions[i];
+  const g = person(m.guesser), t = person(m.target);
+  const guess = typed[m.guesser];
+  const next = () => {
+    setResults([...results, { ...m, guess, correct: verdict === "right" }]);
+    setVerdict(null); setAsked(null); setI(i + 1);
+  };
+  return (
+    <TableShell title="Mission reveal 🕵️">
+      <p className="text-white/70 text-sm font-semibold">Phone in the middle · {i + 1}/{total}</p>
+      <div key={i} className="rounded-3xl bg-[var(--surface)] text-[var(--ink)] p-5 flex flex-col gap-3 rt-pop">
+        <div className="flex items-center gap-2"><Avatar p={g} size={40} /><span className="text-2xl">→</span><Avatar p={t} size={40} /></div>
+        <p className="text-[var(--muted)]">{m.guesser === "You" ? "Your" : `${m.guesser}'s`} mission: find out {possessive(m.target)} {m.topicLabel}.</p>
+        <p className="text-sm font-semibold">{m.guesser === "You" ? "You wrote" : `${m.guesser} wrote`}:</p>
+        <p className="rt-display text-3xl font-extrabold leading-tight">“{guess}”</p>
+        {!verdict && (
+          <>
+            <p className="text-lg mt-1">{m.target === "You" ? "Is that right? You decide." : `${m.target}, is that right?`}</p>
+            {m.target !== "You" && <p className="text-xs text-[var(--muted)] -mt-2">Demo: tap for {m.target}.</p>}
+            <div className="grid grid-cols-2 gap-3">
+              <button onClick={() => setVerdict("right")} className="min-h-[56px] rounded-2xl bg-[var(--ok-bg)] text-[var(--ok)] font-bold text-lg cursor-pointer border-2 border-transparent hover:border-[var(--ok)]">✅ Right</button>
+              <button onClick={() => setVerdict("wrong")} className="min-h-[56px] rounded-2xl bg-[var(--coral)]/15 text-[var(--coral)] font-bold text-lg cursor-pointer border-2 border-transparent hover:border-[var(--coral)]">❌ Wrong</button>
+            </div>
+          </>
+        )}
+        {verdict && (
+          <div className="flex flex-col gap-2 rt-pop">
+            <p className={`rt-display text-3xl font-extrabold ${verdict === "right" ? "text-[var(--ok)]" : "text-[var(--coral)]"}`}>{verdict === "right" ? "🎯 Nailed it!" : "❌ Not quite!"}</p>
+            {verdict === "wrong" && m.truth && <p className="text-lg">{m.target}: “It's actually <b>{m.truth}</b>!”</p>}
+            {!asked ? (
+              <>
+                <p className="text-lg">Ask one question about where {m.target === "You" ? "you're" : `${m.target} is`} from. They decide if it's fair.</p>
+                <p className="text-sm text-[var(--muted)]">No politics, no religion, no stereotypes. A kinder question still counts.</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <button onClick={() => setAsked("fair")} className="min-h-[56px] rounded-2xl bg-[var(--ok-bg)] text-[var(--ok)] font-bold cursor-pointer">Fair question</button>
+                  <button onClick={() => setAsked("kinder")} className="min-h-[56px] rounded-2xl bg-[var(--gold)]/30 font-bold cursor-pointer">Try a kinder one</button>
+                </div>
+              </>
+            ) : (
+              <p className="rounded-2xl bg-[var(--bg)] p-3">{asked === "fair"
+                ? "They took it. Now ask why it matters. That sentence is what you meet again about."
+                : "Good. Ask the kinder one, then why it matters. The score is not the point."}</p>
+            )}
+          </div>
+        )}
+      </div>
+      {verdict && asked && <Btn onClick={next}>{i < total - 1 ? "Next answer" : "See the results"}</Btn>}
+    </TableShell>
+  );
+}
+
+function CrewList({ results, personas, dark }) {
+  const person = (n) => (n === "You" ? YOU : personas.find((p) => p.name === n));
+  const value = (r) => {
+    if (r.correct) return <>{r.guess} ✅</>;
+    if (r.truth) return <>{r.truth} <span className="opacity-70">(not “{r.guess}”)</span></>;
+    return <>you set them straight <span className="opacity-70">(not “{r.guess}”)</span></>;
+  };
+  return (
+    <div className="flex flex-col gap-2">
+      {results.map((r, k) => (
+        <div key={k} className={`rounded-2xl p-3 flex items-center gap-3 ${dark ? "bg-white/10" : "bg-[var(--bg)]"}`}>
+          <Avatar p={person(r.target)} size={34} />
+          <p className="min-w-0 text-sm"><b>{r.target === "You" ? "Your" : `${r.target}'s`} {r.topicLabel}:</b> {value(r)}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Meeting1({ game, personas, update, next, live }) {
+  const [step, setStep] = useState("intro");
+  const [typed, setTyped] = useState({});
+  if (!game.missions.length) return (
+    <TableShell center>
+      <Title dark big>Wait for your table.</Title>
+      <p className="text-white/80 text-lg">Someone still has to join with your code before the mission can start.</p>
+    </TableShell>
+  );
+  if (step === "intro") return (
+    <TableShell center>
+      <div className="flex flex-col gap-5 text-center items-center rt-pop">
+        <div className="text-7xl">☕🕵️</div>
+        <Title dark big>Welcome to meeting 1.</Title>
+        <p className="text-white/80 text-lg max-w-[40ch]">Start with two truths and a lie. Then one secret mission: get a true answer, and ask why it matters. That is the connection.</p>
+        <Btn onClick={() => setStep("opening")}>Start the opening game</Btn>
+      </div>
+    </TableShell>
+  );
+  if (step === "opening") {
+    const opener = MINI_GAMES.find((g) => g.id === "truths");
+    return (
+      <TableShell chip="📱 Meeting 1" title="Two truths and a lie">
+        <p className="text-white/85 text-lg">{opener.how}</p>
+        <OpeningDeck deck={opener.deck} />
+        <Btn onClick={() => setStep("brief")}>Now the secret mission</Btn>
+      </TableShell>
+    );
+  }
+  if (step === "brief") return <MissionBriefing game={game} personas={personas} onReady={() => setStep("live")} />;
+  if (step === "live") return <MissionInProgress game={game} personas={personas} onEnd={() => setStep("answers")} />;
+  if (step === "answers") return <MissionAnswers game={game} personas={personas} solo={live} onDone={(t) => { setTyped(t); setStep("reveal"); }} />;
+  if (step === "reveal") return <MissionReveal game={game} personas={personas} typed={typed} solo={live} onDone={(r) => { update({ m1: { missionResults: r } }); setStep("seal"); }} />;
+  if (step === "seal") return <SealLine personas={personas} live={live} onDone={(line, bye) => { update({ capsule: line, bye: bye || "See you next time" }); setStep("end"); }} />;
+  return (
+    <TableShell center>
+      <div className="flex flex-col gap-5 text-center items-center rt-pop">
+        <div className="text-7xl">🎬</div>
+        <Title dark big>That's a wrap on meeting 1.</Title>
+        <p className="text-white/80 text-lg max-w-[40ch]">The lines stay sealed. Meeting 2 is where they open.</p>
+        <p className="rt-display text-2xl font-extrabold">{(live ? personas.map((p) => p.bye || "See you next time") : personas.map((p) => LEFTOVER[p.name].bye)).join(" · ")}</p>
+        <Btn onClick={next}>Later that evening… →</Btn>
+      </div>
+    </TableShell>
+  );
+}
+
+function SealLine({ personas, onDone, live }) {
+  const [text, setText] = useState("");
+  const [bye, setBye] = useState("");
+  const [error, setError] = useState("");
+  const seal = (e) => {
+    e.preventDefault();
+    if (text.trim().length < 2) return setError("One sentence you didn't get to say.");
+    onDone(text.trim(), bye.trim());
+  };
+  return (
+    <TableShell title="Leave one line sealed">
+      <p className="text-white/85 text-lg">You each said one thing out loud. Write the line you didn't say. Nobody reads it until you're together again.</p>
+      {live
+        ? personas.map((p) => <p key={p.name} className="rounded-2xl bg-white/10 px-4 py-3">✉️ {p.name} {p.hasCapsule ? "sealed a line." : "hasn't sealed one yet."}</p>)
+        : personas.map((p) => <p key={p.name} className="rounded-2xl bg-white/10 px-4 py-3">✉️ {p.name} sealed a line. <span className="text-white/70">{LEFTOVER[p.name].bye}</span></p>)}
+      <form onSubmit={seal} className="flex flex-col gap-3">
+        <label htmlFor="capsule" className="font-semibold">Your sealed line</label>
+        <textarea id="capsule" rows={2} maxLength={120} value={text} onChange={(e) => { setText(e.target.value); setError(""); }} placeholder="Next time, ask me about…" className="w-full rounded-2xl border-2 border-white/20 bg-white/10 p-3 text-lg text-white resize-none" />
+        {live && (
+          <>
+            <label htmlFor="bye" className="font-semibold">How you say see you next time</label>
+            <input id="bye" maxLength={40} value={bye} onChange={(e) => setBye(e.target.value)} placeholder="See you next time" className="w-full rounded-2xl border-2 border-white/20 bg-white/10 p-3 text-lg text-white" />
+          </>
+        )}
+        {error && <p className="text-sm text-[var(--gold)]">{error}</p>}
+        <Btn type="submit">Seal it until we meet again</Btn>
+      </form>
+    </TableShell>
+  );
+}
+// =====================================================================
+// STAGE 4 — AFTER MEETING 1
+// =====================================================================
+function AfterMeeting1({ game, personas, state, update, next, live }) {
+  const [copied, setCopied] = useState("");
+  const [error, setError] = useState("");
+  const results = state.m1?.missionResults || defaultResults(game.missions);
+  const wrong = results.find((r) => !r.correct);
+  const memoryLine = wrong
+    ? `The night ${wrong.guesser === "You" ? "you were" : `${wrong.guesser} was`} sure ${possessive(wrong.target)} ${wrong.topicLabel} was “${wrong.guess}”.${wrong.truth ? ` (It's ${wrong.truth}.)` : ""}`
+    : "The night all 4 secret missions got cracked. Spies, every one of you.";
+  // Simulated persona votes: they vote for the activity they picked; otherwise alternate.
+  const personaVotes = personas.map((p, k) => {
+    const picks = game.activities.map((a) => a.key && Object.values(p.answers).includes(a.key));
+    return picks[0] !== picks[1] ? (picks[0] ? 0 : 1) : k % 2;
+  });
+  const tally = [0, 1].map((k) => personaVotes.filter((v) => v === k).length + (state.vote === k ? 1 : 0));
+  const chosen = live ? state.vote : (state.vote === null ? null : tally[0] === tally[1] ? state.vote : tally[0] > tally[1] ? 0 : 1);
+  const act = chosen === null ? null : game.activities[chosen];
+  const message = act && state.slot
+    ? `Hey ${game.groupName} 👋\nMeetup #2 picks up Thursday's conversation: ${act.title} ${act.emoji}\n📍 ${act.place}\n🗓️ ${state.slot}\nWho's in? Reply 🙋`
+    : "";
+  const msgRef = useRef(null);
+  const copy = () => {
+    const selectText = () => { const r = document.createRange(); r.selectNodeContents(msgRef.current); const s = window.getSelection(); s.removeAllRanges(); s.addRange(r); };
+    const fallback = () => { selectText(); setCopied("Copying is blocked here. The text is selected, copy it manually."); };
+    try {
+      navigator.clipboard.writeText(message).then(() => setCopied("Copied! Paste it in your group chat."), fallback);
+    } catch { fallback(); }
+  };
+  return (
+    <Screen>
+      <Chip>After meeting 1</Chip>
+      <Title>Here's how it went 📸</Title>
+      <div className="rounded-2xl bg-[var(--blue)] text-white p-4"><p className="text-xs font-bold uppercase tracking-widest text-[var(--gold)]">Your group's signature</p><p className="rt-display text-3xl font-extrabold mt-1">{game.groupName}</p></div>
+      <div className={`${CARD} p-4 flex flex-col gap-2`}>
+        <p className="text-xs font-bold uppercase tracking-widest text-[var(--coral)]">Crew card · what you learned</p>
+        <CrewList results={results} personas={personas} />
+      </div>
+      <div className="rounded-2xl bg-[var(--gold)] text-[var(--on-gold)] p-4 rotate-[-1.5deg] shadow-[0_6px_0_var(--line)]"><p className="text-xs font-bold uppercase tracking-widest">Shared memory card</p><p className="rt-display text-xl font-bold mt-1">“{memoryLine}”</p></div>
+
+      <div className="rounded-3xl border-2 border-dashed border-[var(--coral)] p-5 bg-[var(--coral)]/10 rt-pop">
+        <p className="rt-display text-2xl font-extrabold">🔓 Meeting 2 unlocked</p>
+        <p className="mt-1 text-[var(--muted)]">Meeting 2 is the same conversation, somewhere else. Not a new icebreaker.</p>
+      </div>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="rt-display text-xl font-bold">1. Vote: what's next?</h2>
+        {game.activities.map((a, k) => (
+          <button key={k} onClick={() => { update({ vote: k }); setError(""); }} className={`text-left rounded-2xl p-4 border-2 transition cursor-pointer ${state.vote === k ? "border-[var(--coral)] bg-[var(--coral)]/10" : "border-[var(--line)] bg-[var(--surface)]"}`}>
+            <p className="rt-display font-bold text-lg min-w-0">{a.emoji} {a.title}</p>
+            <p className="text-sm text-[var(--muted)]">{a.place}</p>
+            <p className="text-xs text-[var(--ok)] font-semibold mt-1">Why: {a.because}</p>
+          </button>
+        ))}
+        {state.vote !== null && <p className="text-sm text-[var(--muted)]">Next plan: <b className="text-[var(--ink)]">{act.title}</b>. Everyone is still invited. No scores.</p>}
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="rt-display text-xl font-bold">2. Our Berkeley list</h2>
+        <p className="text-sm text-[var(--muted)]">One thing you want to do here with this group. Nobody gets dropped off the list.</p>
+        {live
+          ? personas.map((p) => <p key={p.name} className="rounded-2xl bg-[var(--bg)] px-4 py-3"><b>{p.name}:</b> {p.wish || "Still writing theirs."}</p>)
+          : personas.map((p) => <p key={p.name} className="rounded-2xl bg-[var(--bg)] px-4 py-3"><b>{p.name}:</b> {BERKELEY_LIST[p.name]}</p>)}
+        <label htmlFor="wish" className="font-semibold">Yours</label>
+        <input id="wish" maxLength={80} value={state.wish || ""} onChange={(e) => { update({ wish: e.target.value }); setError(""); }} placeholder="Something you want to do in Berkeley together" className="w-full rounded-2xl border-2 border-[var(--line)] bg-[var(--surface)] p-3 text-lg text-[var(--ink)]" />
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="rt-display text-xl font-bold">3. Lock a time</h2>
+        <div className="flex gap-2 flex-wrap">{ROUNDS.slots.map((s) => <button key={s} onClick={() => { update({ slot: s }); setError(""); }} className={`min-h-[44px] rounded-full px-4 py-2 font-semibold border-2 cursor-pointer ${state.slot === s ? "bg-[var(--blue)] text-[var(--gold)] border-[var(--blue)]" : "bg-[var(--surface)] border-[var(--line)]"}`}>{state.slot === s ? "🔒 " : ""}{s}</button>)}</div>
+      </section>
+
+      {message && (
+        <section className="flex flex-col gap-2 rt-pop">
+          <h2 className="rt-display text-xl font-bold">4. Send it to the group</h2>
+          <div ref={msgRef} className="rounded-2xl rounded-tr-sm bg-[var(--chat)] text-[var(--chat-ink)] p-4 whitespace-pre-line text-[15px] border border-[var(--line)] select-text">{message}</div>
+          <Btn ghost onClick={copy}>📋 Copy WhatsApp message</Btn>
+          {copied && <p className="text-sm text-[var(--ok)] font-semibold">{copied}</p>}
+        </section>
+      )}
+      <Btn onClick={() => (message && (state.wish || "").trim() ? next() : setError(message ? "Add your Berkeley wish first." : "Vote and lock a time first."))}>Fast forward 2 days →</Btn>
+      {error && <p className="text-sm text-[var(--danger)] -mt-3">{error}</p>}
+    </Screen>
+  );
+}
+
+// =====================================================================
+// STAGE 5 — BETWEEN MEETINGS
+// =====================================================================
+function BetweenMeetings({ game, personas, state, update, next, live }) {
+  const act = game.activities[state.vote ?? 0];
+  const slot = state.slot || ROUNDS.slots[0];
+  const late = personas[1] || personas[0] || { name: "Someone", color: "#6A4BE8" };
+  const Notif = ({ delay, children }) => (
+    <div className="rounded-2xl bg-white/15 p-4 rt-slide" style={{ animationDelay: delay }}>
+      <div className="flex justify-between text-xs text-white/70 mb-1"><span className="font-bold tracking-wider">🍓 {APP_NAME.toUpperCase()}</span><span>now</span></div>
+      {children}
+    </div>
+  );
+  return (
+    <div className="flex-1 flex flex-col bg-[var(--table)] text-white">
+      <div className="flex-1 w-full max-w-[560px] mx-auto gutter pt-6 pb-28 flex flex-col gap-4">
+        <div className="text-center pt-4 pb-2">
+          <p className="text-sm text-white/70">{live ? "Before you meet again" : "Saturday · Day +2 (simulated lock screen)"}</p>
+          <p className="rt-display text-7xl sm:text-8xl font-bold tabular-nums">10:02</p>
+        </div>
+        <Notif delay="0s">
+          <p className="font-semibold">{game.groupName}: meetup #2 is coming up</p>
+          <p className="text-sm text-white/85">{act.emoji} {act.title} · {slot}. See you there 🍓</p>
+        </Notif>
+        <Notif delay=".6s">
+          <p className="font-semibold">{state.poked ? `${late.name} is in!` : `${late.name} hasn't confirmed yet 👀`}</p>
+          <p className="text-sm text-white/85">{state.poked ? (live ? "Send them the room link if they're still quiet." : "“ahh sorry, I'm in!! 🙌” (simulated reply)") : "A friendly poke usually does the trick."}</p>
+          {!state.poked && <button onClick={() => update({ poked: true })} className="mt-3 min-h-[44px] rounded-full bg-[var(--gold)] text-[var(--on-gold)] px-5 py-2 font-semibold text-sm cursor-pointer">👉 Poke {late.name}</button>}
+        </Notif>
+        <div className="rounded-2xl bg-white/10 p-4 mt-2">
+          <p className="text-xs uppercase tracking-widest text-[var(--gold)] font-bold mb-2">Who's coming</p>
+          {[YOU, ...personas].map((p) => (
+            <div key={p.name} className="flex items-center justify-between py-1.5">
+              <div className="flex items-center gap-2"><Avatar p={p} size={28} /><span>{p.name}</span></div>
+              <span>{p.name === late.name && !state.poked ? "⏳ pending" : "✅ in"}</span>
+            </div>
+          ))}
+        </div>
+        <div className="mt-auto pt-2"><Btn onClick={next}>It's meeting day →</Btn></div>
+      </div>
+    </div>
+  );
+}
+
+// =====================================================================
+// STAGE 6 — MEETING 2 (just hang out, mini-games if needed) + CHECK-IN
+// =====================================================================
+function Meeting2({ game, personas, state, next, live }) {
+  const [opened, setOpened] = useState(false);
+  const [box, setBox] = useState(false);
+  const act = game.activities[state.vote ?? 0];
+  const lines = live
+    ? [{ name: "You", text: state.capsule || "Next time, ask me what I didn't say." }, ...personas.map((p) => ({ name: p.name, text: p.capsule || (p.hasCapsule ? "Sealed. Open yours to read it." : "Hasn't sealed a line yet.") }))]
+    : [{ name: "You", text: state.capsule || "Next time, ask me what I didn't say." }, ...personas.map((p) => ({ name: p.name, text: LEFTOVER[p.name].line }))];
+  if (box) return <TableShell chip="📱 Meeting 2"><MiniGameBox onClose={() => setBox(false)} closeLabel="Back to the lines" /></TableShell>;
+  if (!opened) return (
+    <TableShell chip="📱 Meeting 2" title="Open what you didn't finish">
+      <p className="text-white/85 text-lg">These lines were sealed at the café. They open because you're together again.</p>
+      {lines.map((l) => <div key={l.name} className="rounded-2xl bg-white/10 p-4"><p className="text-xs font-bold uppercase tracking-widest text-[var(--gold)]">{l.name}</p><p className="text-lg mt-1">{l.text}</p></div>)}
+      <div className="rounded-2xl bg-[var(--gold)] text-[var(--on-gold)] p-4">
+        <p className="text-xs font-bold uppercase tracking-widest">Still on the Berkeley list</p>
+        {live
+          ? personas.map((p) => <p key={p.name} className="mt-1"><b>{p.name}:</b> {p.wish || "Still writing theirs."}</p>)
+          : personas.map((p) => <p key={p.name} className="mt-1"><b>{p.name}:</b> {BERKELEY_LIST[p.name]}</p>)}
+        {state.wish && <p className="mt-1"><b>You:</b> {state.wish}</p>}
+      </div>
+      <Btn onClick={() => setOpened(true)}>Start from these lines</Btn>
+    </TableShell>
+  );
+  return (
+    <TableShell center chip="📱 Meeting 2">
+      <div className="flex flex-col gap-5 text-center items-center rt-pop">
+        <div className="text-7xl">{act.emoji}</div>
+        <Title dark big>You're not strangers anymore.</Title>
+        <p className="text-white/80 text-lg max-w-[40ch]">{act.title} is not a fresh start. Ask about what you learned last time, then let it go wherever it goes.</p>
+        <Btn ghost dark onClick={() => setBox(true)}>🎲 Need a nudge? Open the mini-game box</Btn>
+        <Btn onClick={next}>We're done, time to check in →</Btn>
+      </div>
+    </TableShell>
+  );
+}
+
+function YesNo({ value, onChange }) {
+  return (
+    <div className="flex gap-3">{[["Yes", true], ["No", false]].map(([l, v]) => (
+      <button key={l} onClick={() => onChange(v)} className={`flex-1 min-h-[52px] rounded-2xl py-3 font-semibold border-2 cursor-pointer ${value === v ? "bg-[var(--blue)] text-[var(--gold)] border-[var(--blue)]" : "bg-[var(--surface)] border-[var(--line)]"}`}>{l}</button>
+    ))}</div>
+  );
+}
+
+// After the check-in: a (fake) group chat is created for the crew. Not functional, just shows the idea.
+function ChatReady({ game, personas, live, code }) {
+  const [open, setOpen] = useState(false);
+  const people = [YOU, ...personas];
+  const link = live && code ? `${location.origin}${location.pathname}?room=${code}` : `strawberry.app/chat/${slug(game.groupName)}`;
+  if (live) return (
+    <Screen center>
+      <div className="flex flex-col gap-5 rt-pop">
+        <div className="text-7xl text-center">🍓</div>
+        <Title big>Check-in saved.</Title>
+        <p className="text-lg text-[var(--muted)]">It's in the Strawberry sheet, on the Checkins tab. This table keeps the same link.</p>
+        <div className={`${CARD} p-4 flex flex-col gap-3`}>
+          <div className="flex -space-x-2">{people.map((p) => <Avatar key={p.name} p={p} size={40} />)}</div>
+          <p className="text-xs font-bold uppercase tracking-widest text-[var(--muted)]">Table link</p>
+          <p className="font-semibold rounded-2xl bg-[var(--bg)] px-4 py-3 break-all">{link}</p>
+        </div>
+      </div>
+    </Screen>
+  );
+  if (open) return (
+    <Screen>
+      <button onClick={() => setOpen(false)} className="self-start font-semibold text-[var(--muted)] cursor-pointer min-h-[44px]">← Back</button>
+      <div className={`${CARD} overflow-hidden`}>
+        <div className="flex items-center gap-3 p-4 bg-[var(--blue)] text-white">
+          <span className="text-3xl">💬</span>
+          <div className="min-w-0"><p className="rt-display font-extrabold leading-tight">{game.groupName}</p><p className="text-xs text-white/70">4 members · preview</p></div>
+        </div>
+        <div className="p-4 flex flex-col gap-3 bg-[var(--bg)]">
+          {CHAT_PREVIEW.map((msg, k) => {
+            const p = personas.find((x) => x.name === msg.from) || personas[k % personas.length];
+            return (
+              <div key={k} className="flex items-end gap-2 rt-slide" style={{ animationDelay: `${k * 0.25}s` }}>
+                <Avatar p={p} size={30} />
+                <div className="rounded-2xl rounded-bl-sm bg-[var(--surface)] border border-[var(--line)] px-3 py-2 max-w-[80%]"><p className="text-xs font-bold text-[var(--muted)]">{p.name}</p><p>{msg.text}</p></div>
+              </div>
+            );
+          })}
+          <div className="flex flex-wrap gap-2 pt-1">
+            {CHAT_TOOLS.map((t) => <span key={t.label} className="rounded-full px-3 py-1.5 text-sm font-semibold bg-[var(--gold)]/30 text-[var(--ink)] opacity-80">{t.emoji} {t.label}</span>)}
+          </div>
+        </div>
+        <div className="p-3 border-t border-[var(--line)]">
+          <div className="rounded-full bg-[var(--bg)] px-4 py-3 text-[var(--muted)] text-sm">🔒 The chat opens in the full app</div>
+        </div>
+      </div>
+      <p className="text-sm text-[var(--muted)] text-center">This is a preview of the idea. Sending messages isn't part of the demo.</p>
+    </Screen>
+  );
+  return (
+    <Screen center>
+      <div className="flex flex-col gap-5 rt-pop">
+        <div className="text-7xl text-center">💬</div>
+        <Title big>Your crew chat is ready.</Title>
+        <p className="text-lg text-[var(--muted)]">Thanks for checking in! We made a little group chat for {game.groupName}. Use it for your next meetups: pick a place, pick a date, pull up a mini-game.</p>
+        <div className={`${CARD} p-4 flex flex-col gap-3`}>
+          <div className="flex -space-x-2">{people.map((p) => <Avatar key={p.name} p={p} size={40} />)}</div>
+          <p className="text-xs font-bold uppercase tracking-widest text-[var(--muted)]">Chat link</p>
+          <p className="font-semibold rounded-2xl bg-[var(--bg)] px-4 py-3 break-all">🔗 {link}</p>
+          <div className="flex flex-wrap gap-2">
+            {CHAT_TOOLS.map((t) => <span key={t.label} className="rounded-full px-3 py-1 text-xs font-semibold bg-[var(--gold)]/30 text-[var(--ink)]">{t.emoji} {t.label}</span>)}
+          </div>
+        </div>
+        <Btn onClick={() => setOpen(true)}>Open the chat 💬</Btn>
+      </div>
+    </Screen>
+  );
+}
+
+function CheckIn({ game, personas, live, code, sessionCode, token }) {
+  const [again, setAgain] = useState(null);
+  const [met, setMet] = useState(null);
+  const [reasons, setReasons] = useState([]);
+  const [connected, setConnected] = useState([]);
+  const [connectWhy, setConnectWhy] = useState("");
+  const [error, setError] = useState("");
+  const [saved, setSaved] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const toggle = (r) => { setReasons(reasons.includes(r) ? reasons.filter((x) => x !== r) : [...reasons, r]); setError(""); };
+  const toggleWho = (name) => {
+    setError("");
+    if (name === "Nobody yet") return setConnected(connected.includes(name) ? [] : ["Nobody yet"]);
+    const next = connected.filter((n) => n !== "Nobody yet");
+    setConnected(next.includes(name) ? next.filter((n) => n !== name) : [...next, name]);
+  };
+  const submit = async () => {
+    if (again === null || met === null) return setError("Answer both yes/no questions first.");
+    if (!reasons.length) return setError("Pick at least one reason.");
+    if (!connected.length) return setError("Say who you connected with. Nobody yet is a fine answer.");
+    if (!connectWhy.trim()) return setError("Add one line on why, so the next group can be better.");
+    const row = { again, met, reasons, connected, connectWhy: connectWhy.trim(), group: game.groupName, at: new Date().toISOString() };
+    if (live) {
+      setBusy(true);
+      try {
+        await api("checkin", { code: sessionCode, token, again, met, reasons, connected, connectWhy: row.connectWhy, group: game.groupName });
+      } catch (e) {
+        setBusy(false);
+        return setError(e.message || "Could not save. Try again.");
+      }
+    } else {
+      store.set(CHECKINS_KEY, [...store.get(CHECKINS_KEY, []), row]);
+      sendCheckin(row);
+    }
+    setSaved(true);
+  };
+  if (saved) return <ChatReady game={game} personas={personas} live={live} code={code} />;
+  return (
+    <Screen>
+      <Chip>Check-in</Chip>
+      <Title>Quick check-in 📝</Title>
+      <div className="flex flex-col gap-2"><p className="font-semibold text-lg">Would you do this again?</p><YesNo value={again} onChange={(v) => { setAgain(v); setError(""); }} /></div>
+      <div className="flex flex-col gap-2"><p className="font-semibold text-lg">Did you meet again?</p><YesNo value={met} onChange={(v) => { setMet(v); setError(""); }} /></div>
+      <div className="flex flex-col gap-2">
+        <p className="font-semibold text-lg">Who did you connect with?</p>
+        <div className="flex flex-wrap gap-2">{[...personas.map((p) => p.name), "Nobody yet"].map((name) => <button key={name} onClick={() => toggleWho(name)} className={`min-h-[44px] rounded-full px-4 py-2 text-sm font-semibold border-2 cursor-pointer ${connected.includes(name) ? "bg-[var(--blue)] text-[var(--gold)] border-[var(--blue)]" : "bg-[var(--surface)] border-[var(--line)]"}`}>{name}</button>)}</div>
+      </div>
+      <div className="flex flex-col gap-2">
+        <label htmlFor="connect-why" className="font-semibold text-lg">Why?</label>
+        <textarea id="connect-why" rows={2} maxLength={160} value={connectWhy} onChange={(e) => { setConnectWhy(e.target.value); setError(""); }} placeholder="One sentence. This shapes the next group." className="w-full rounded-2xl border-2 border-[var(--line)] bg-[var(--surface)] p-3 text-lg text-[var(--ink)] resize-none" />
+      </div>
+      <div className="flex flex-col gap-2">
+        <p className="font-semibold text-lg">What played a part? <span className="text-sm font-normal text-[var(--muted)]">pick any</span></p>
+        <div className="flex flex-wrap gap-2">{ROUNDS.checkinReasons.map((r) => <button key={r} onClick={() => toggle(r)} className={`min-h-[44px] rounded-full px-4 py-2 text-sm font-semibold border-2 cursor-pointer ${reasons.includes(r) ? "bg-[var(--coral)] text-white border-[var(--coral)]" : "bg-[var(--surface)] border-[var(--line)]"}`}>{r}</button>)}</div>
+      </div>
+      <Btn onClick={submit}>{busy ? "Saving…" : "OK, submit"}</Btn>
+      {error && <p className="text-sm text-[var(--danger)] -mt-3">{error}</p>}
+    </Screen>
+  );
+}
+
+// =====================================================================
+// #results and #tests views (demo menu only)
+// =====================================================================
+function Results({ back }) {
+  const [rows, setRows] = useState(store.get(CHECKINS_KEY, []));
+  const [confirm, setConfirm] = useState(false);
+  const pct = (f) => (rows.length ? Math.round((rows.filter(f).length / rows.length) * 100) : 0);
+  const counts = ROUNDS.checkinReasons.map((r) => [r, rows.filter((x) => x.reasons.includes(r)).length]);
+  const max = Math.max(1, ...counts.map((c) => c[1]));
+  return (
+    <Screen>
+      <Chip>Results</Chip>
+      <Title>Check-in results</Title>
+      <p className="text-sm text-[var(--muted)] -mt-2">Saved in this browser only. Each colleague sees their own check-ins.</p>
+      <div className="grid grid-cols-3 gap-2 text-center">
+        {[["Check-ins", rows.length], ["Would again", `${pct((r) => r.again)}%`], ["Met again", `${pct((r) => r.met)}%`]].map(([l, v]) => (
+          <div key={l} className="rounded-2xl bg-[var(--surface)] border border-[var(--line)] p-3"><p className="rt-display text-2xl sm:text-3xl font-extrabold tabular-nums">{v}</p><p className="text-xs text-[var(--muted)]">{l}</p></div>
+        ))}
+      </div>
+      {!rows.length && <p className="text-[var(--muted)]">No check-ins yet. Finish the check-in to add one.</p>}
+      {rows.some((r) => r.connected) && (
+        <div className="flex flex-col gap-1">
+          <p className="text-xs font-bold uppercase tracking-widest text-[var(--muted)]">Who people connected with</p>
+          {Object.entries(rows.reduce((acc, r) => { (r.connected || []).forEach((n) => { acc[n] = (acc[n] || 0) + 1; }); return acc; }, {})).map(([n, c]) => (
+            <p key={n} className="text-sm flex justify-between"><span>{n}</span><span className="font-semibold tabular-nums">{c}</span></p>
+          ))}
+        </div>
+      )}
+      {rows.length > 0 && (
+        <div className="flex flex-col gap-2">
+          {counts.map(([r, c]) => (
+            <div key={r}><div className="flex justify-between text-sm"><span>{r}</span><span className="font-semibold tabular-nums">{c}</span></div>
+              <div className="h-2 rounded-full bg-[var(--line)]"><div className="h-2 rounded-full bg-[var(--coral)]" style={{ width: `${(c / max) * 100}%` }} /></div></div>
+          ))}
+        </div>
+      )}
+      <Btn ghost onClick={back}>← Back to the app</Btn>
+      {rows.length > 0 && <button className="text-sm text-[var(--danger)] underline cursor-pointer" onClick={() => { if (!confirm) return setConfirm(true); store.remove(CHECKINS_KEY); setRows([]); setConfirm(false); }}>{confirm ? "Tap again to clear all check-ins" : "Clear check-ins"}</button>}
+    </Screen>
+  );
+}
+
+function Tests({ back }) {
+  const suites = useMemo(runTests, []);
+  const all = suites.flatMap((s) => s.checks);
+  const passed = all.filter((c) => c[1]).length;
+  return (
+    <Screen>
+      <Chip>Engine tests</Chip>
+      <Title>{passed}/{all.length} checks pass {passed === all.length ? "✅" : "❌"}</Title>
+      {suites.map((s) => (
+        <div key={s.name} className="rounded-2xl bg-[var(--surface)] border border-[var(--line)] p-4">
+          <h2 className="font-bold rt-display mb-2">{s.name}</h2>
+          {s.checks.map(([label, ok]) => <p key={label} className="text-sm py-0.5">{ok ? "✅" : "❌"} {label}</p>)}
+        </div>
+      ))}
+      <Btn ghost onClick={back}>← Back to the app</Btn>
+    </Screen>
+  );
+}
+
+// =====================================================================
+// DEMO NAVIGATOR (floating button) + APP
+// =====================================================================
+const STAGES = [["onboarding", "Onboarding"], ["reveal", "Your group"], ["intros", "Before you meet"], ["meeting1", "Meeting 1"], ["after1", "After meeting 1"], ["between", "Between meetings"], ["meeting2", "Meeting 2"], ["checkin", "Check-in"]];
+const INITIAL = { stage: "onboarding", view: "app", answers: null, home: null, standing: null, hook: null, capsule: "", wish: "", noOverlap: false, m1: {}, vote: null, slot: null, poked: false, run: 0, intro: "", bye: "", live: false, code: "", activity: "", when: "", place: "", people: null };
+
+function DemoNav({ state, go, setView, reset, toggleFallback }) {
+  const [open, setOpen] = useState(false);
+  const row = (active) => `w-full text-left rounded-xl px-3 py-2.5 text-sm font-semibold cursor-pointer ${active ? "bg-[var(--blue)] text-[var(--gold)]" : "hover:bg-[var(--line)]"}`;
+  const act = (fn) => () => { fn(); setOpen(false); };
+  return (
+    <div className="demo-fab">
+      {open && (
+        <div className="rt-pop w-[min(300px,calc(100vw-32px))] max-h-[70vh] overflow-y-auto rounded-2xl bg-[var(--surface)] text-[var(--ink)] border border-[var(--line)] shadow-[0_12px_40px_rgba(0,0,0,.25)] p-2 flex flex-col gap-0.5">
+          <p className="px-3 pt-2 pb-1 text-xs font-bold uppercase tracking-widest text-[var(--muted)]">Jump to a stage</p>
+          {STAGES.map(([k, l], n) => <button key={k} className={row(state.view === "app" && state.stage === k)} onClick={act(() => go(k))}>{n + 1}. {l}</button>)}
+          <div className="h-px bg-[var(--line)] my-1" />
+          <button className={row(state.view === "results")} onClick={act(() => setView("results"))}>📊 Check-in results</button>
+          <button className={row(state.view === "tests")} onClick={act(() => setView("tests"))}>🧪 Engine tests</button>
+          <button className={row(state.noOverlap)} onClick={act(toggleFallback)}>🔀 No-overlap path: {state.noOverlap ? "on" : "off"}</button>
+          <button className="w-full text-left rounded-xl px-3 py-2.5 text-sm font-semibold cursor-pointer text-[var(--coral)] hover:bg-[var(--line)]" onClick={act(reset)}>↺ Reset the journey</button>
+        </div>
+      )}
+      <button onClick={() => setOpen(!open)} aria-expanded={open} className="min-h-[48px] rounded-full bg-[var(--ink)] text-[var(--bg)] px-5 py-3 font-bold shadow-[0_6px_20px_rgba(0,0,0,.3)] cursor-pointer rt-display">{open ? "✕ Close" : "🎮 Demo"}</button>
+    </div>
+  );
+}
+
+function roomFromUrl() {
+  try { return (new URLSearchParams(location.search).get("room") || "").trim().toUpperCase(); } catch { return ""; }
+}
+function loadSession() {
+  const s = store.get(SESSION_KEY, null);
+  return s && s.token && s.code ? s : null;
+}
+
+function Field({ id, label, value, set, placeholder, maxLength = 40 }) {
+  return (
+    <label className="flex flex-col gap-1 font-semibold">
+      {label}
+      <input id={id} maxLength={maxLength} value={value} placeholder={placeholder} onChange={(e) => set(e.target.value)} className="w-full rounded-2xl border-2 border-[var(--line)] bg-[var(--bg)] p-3 text-lg font-normal text-[var(--ink)]" />
+    </label>
+  );
+}
+
+function LiveGate({ initialCode, onJoined }) {
+  const [mode, setMode] = useState(initialCode ? "join" : "");
+  const [form, setForm] = useState({ name: "", email: "", from: "", standing: "", activity: "", when: "", place: "", code: initialCode || "" });
+  const [ready, setReady] = useState(false);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const set = (k) => (v) => { setForm((f) => ({ ...f, [k]: v })); setError(""); };
+  const startCards = () => {
+    if (form.name.trim().length < 2) return setError("Add your name.");
+    if (!/^[^\s@]+@berkeley\.edu$/i.test(form.email.trim())) return setError("Use your @berkeley.edu email.");
+    if (form.from.trim().length < 2) return setError("Add where you're from.");
+    if (!form.standing) return setError("Say if you're an undergrad, an exchange student, or a grad student.");
+    if (mode === "host") {
+      if (form.activity.trim().length < 2) return setError("Name the activity. That is the hook.");
+      if (form.when.trim().length < 2) return setError("Add when you meet.");
+      if (form.place.trim().length < 2) return setError("Add where you meet.");
+    } else if (!/^[A-Z0-9]{4}$/i.test(form.code.trim())) return setError("Enter the 4-character code.");
+    setReady(true);
+  };
+  if (!mode) return (
+    <Screen center>
+      <div className="rt-pop flex flex-col gap-5">
+        <div className="text-6xl">🍓</div>
+        <Title big>Show up for one activity.</Title>
+        <p className="text-lg text-[var(--muted)]">Open a table, or join one with a code. The people who join are the group.</p>
+        <Btn onClick={() => setMode("host")}>Host a table</Btn>
+        <Btn ghost onClick={() => setMode("join")}>Join with a code</Btn>
+      </div>
+    </Screen>
+  );
+  if (!ready) return (
+    <Screen>
+      <button onClick={() => setMode("")} className="self-start font-semibold text-[var(--muted)] cursor-pointer min-h-[44px]">← Back</button>
+      <Title>{mode === "host" ? "Host a table" : "Join a table"}</Title>
+      <Field id="name" label="Your name" value={form.name} set={set("name")} placeholder="Alex" />
+      <Field id="email" label="Berkeley email" value={form.email} set={set("email")} placeholder="you@berkeley.edu" maxLength={80} />
+      <Field id="from" label="Where you're from" value={form.from} set={set("from")} placeholder="Taipei" />
+      <div className="flex flex-col gap-2">
+        <p className="font-semibold">You are</p>
+        <div className="flex flex-wrap gap-2">
+          {STANDINGS.map((s) => (
+            <button key={s.key} onClick={() => set("standing")(s.key)} className={`min-h-[44px] rounded-full px-4 py-2 text-sm font-semibold border-2 cursor-pointer ${form.standing === s.key ? "bg-[var(--blue)] text-[var(--gold)] border-[var(--blue)]" : "bg-[var(--surface)] border-[var(--line)]"}`}>{s.label}</button>
+          ))}
+        </div>
+        {form.standing === "grad" && <p className="text-sm text-[var(--muted)]">Grad students in round 1 mostly showed up for a class reason. Stay if you actually want to meet again.</p>}
+      </div>
+      {mode === "host" ? (
+        <>
+          <p className="font-semibold">The activity for this table</p>
+          <div className="flex flex-wrap gap-2">
+            {ACTIVITY_HOOKS.map((a) => (
+              <button key={a} onClick={() => set("activity")(a)} className={`min-h-[44px] rounded-full px-4 py-2 text-sm font-semibold border-2 cursor-pointer ${form.activity === a ? "bg-[var(--coral)] text-white border-[var(--coral)]" : "bg-[var(--surface)] border-[var(--line)]"}`}>{a}</button>
+            ))}
+          </div>
+          <Field id="activity" label="Or name it" value={form.activity} set={set("activity")} placeholder="Boba crawl" />
+          <Field id="when" label="When" value={form.when} set={set("when")} placeholder="Thursday · 5:30 pm" maxLength={60} />
+          <Field id="place" label="Where" value={form.place} set={set("place")} placeholder="A café near Sproul" maxLength={80} />
+        </>
+      ) : <Field id="code" label="Table code" value={form.code} set={(v) => set("code")(v.toUpperCase())} placeholder="AB3K" maxLength={4} />}
+      {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
+      <Btn onClick={startCards}>Next: the cards</Btn>
+    </Screen>
+  );
+  return (
+    <div className="flex-1 flex flex-col">
+      {busy && <p className="gutter pt-4 font-semibold">Saving your table…</p>}
+      {error && <p className="gutter pt-2 text-sm text-[var(--danger)]">{error}</p>}
+      <Onboarding cardsOnly askSecret onDone={async (answers, home, secret) => {
+        setBusy(true); setError("");
+        try {
+          await onJoined({ ...form, code: form.code.trim().toUpperCase(), answers, home, secret, mode });
+        } catch (e) {
+          setBusy(false);
+          setError(e.message || "Could not reach the sheet.");
+        }
+      }} />
+    </div>
+  );
+}
+
+function initialView() {
+  try { const h = location.hash.replace("#", ""); return h === "results" || h === "tests" ? h : "app"; } catch { return "app"; }
+}
+
+function App() {
+  const [session, setSession] = useState(() => (LIVE ? loadSession() : null));
+  const [state, setState] = useState(() => {
+    if (!LIVE) return { ...INITIAL, ...store.get(STATE_KEY, {}), view: initialView() };
+    const saved = loadSession() ? store.get(STATE_KEY, {}) : {};
+    return { ...INITIAL, ...saved, live: true, view: "app", stage: loadSession() ? (saved.stage && saved.stage !== "onboarding" && saved.stage !== "gate" ? saved.stage : "reveal") : "gate" };
+  });
+  useEffect(() => store.set(STATE_KEY, state), [state]);
+  useEffect(() => {
+    if (!LIVE) {
+      try { history.replaceState(null, "", state.view === "app" ? location.pathname + location.search : `#${state.view}`); } catch {}
+    }
+  }, [state.view]);
+  const sessionRef = useRef(session);
+  sessionRef.current = session;
+  const update = (patch) => setState((s) => {
+    const next = { ...s, ...(typeof patch === "function" ? patch(s) : patch) };
+    const sess = sessionRef.current;
+    if (LIVE && sess) {
+      const fields = {};
+      ["capsule", "wish", "vote", "slot", "intro", "bye"].forEach((k) => {
+        if (next[k] !== s[k] && next[k] != null && next[k] !== "") fields[k] = next[k];
+      });
+      if (Object.keys(fields).length) api("save", { code: sess.code, token: sess.token, ...fields }).catch(() => {});
+    }
+    return next;
+  });
+  const scrollTop = () => { try { window.scrollTo(0, 0); } catch {} };
+  const go = (stage) => { update((s) => ({ stage, view: "app", run: s.run + 1 })); scrollTop(); };
+  const setView = (view) => { update({ view }); scrollTop(); };
+  useEffect(() => {
+    if (!LIVE || !session) return;
+    let stop = false;
+    const pull = async () => {
+      try {
+        const data = await api("getState", { code: session.code, token: session.token });
+        if (stop) return;
+        setState((s) => ({
+          ...s,
+          live: true,
+          code: data.room.code,
+          activity: data.room.activity,
+          when: data.room.when,
+          place: data.room.place,
+          people: data.people,
+          hook: s.hook || data.room.activity,
+          answers: s.answers || data.you.answers,
+          home: s.home || data.you.home,
+          standing: s.standing || data.you.standing,
+          intro: s.intro || data.you.intro || "",
+          capsule: s.capsule || data.you.capsule || "",
+          wish: s.wish || data.you.wish || "",
+          bye: s.bye || data.you.bye || "",
+          slot: s.slot || data.you.slot || null,
+          vote: s.vote != null ? s.vote : (data.you.vote === "" || data.you.vote == null ? null : Number(data.you.vote)),
+          stage: s.stage === "gate" || s.stage === "onboarding" ? "reveal" : s.stage,
+        }));
+      } catch (e) {
+        if (stop) return;
+        store.remove(SESSION_KEY);
+        setSession(null);
+        setState((s) => ({ ...INITIAL, live: true, stage: "gate", run: s.run + 1, gateError: e.message }));
+      }
+    };
+    pull();
+    const id = setInterval(pull, 5000);
+    return () => { stop = true; clearInterval(id); };
+  }, [session]);
+
+  const answers = state.answers || DEFAULT_ANSWERS;
+  const home = state.home || "dish";
+  const personas = useMemo(() => {
+    if (state.live) return peopleToPersonas(state.people);
+    return state.noOverlap ? mirrorPersonas(answers) : PERSONAS;
+  }, [state.live, state.people, state.noOverlap, answers]);
+  const game = useMemo(() => buildGame(answers, home, personas, { live: state.live }), [answers, home, personas, state.live]);
+  const stageIndex = STAGES.findIndex(([k]) => k === state.stage);
+  const nextStage = () => go(STAGES[Math.max(stageIndex, 0) + 1][0]);
+  const plan = { when: state.when || ROUNDS.meetup1.when, place: state.place || ROUNDS.meetup1.place };
+  const props = { game, personas, home, state, update, next: nextStage, live: !!state.live, plan, intro: state.intro, onIntro: (line) => update({ intro: line }) };
+
+  const join = async (body) => {
+    const data = await api(body.mode === "host" ? "createRoom" : "join", body);
+    const nextSession = { code: data.room.code, token: data.token, person_id: data.person_id };
+    store.set(SESSION_KEY, nextSession);
+    setSession(nextSession);
+    const url = `${location.pathname}?room=${data.room.code}`;
+    try { history.replaceState(null, "", url); } catch {}
+    setState((s) => ({
+      ...s, live: true, stage: "reveal", view: "app", run: s.run + 1,
+      answers: body.answers, home: body.home, standing: body.standing, hook: data.room.activity,
+      code: data.room.code, activity: data.room.activity, when: data.room.when, place: data.room.place,
+      people: data.people || [], m1: {}, vote: null, slot: null, poked: false, intro: "", capsule: "", wish: "", bye: "",
+    }));
+    scrollTop();
+  };
+
+  let screen;
+  if (!LIVE && state.view === "results") screen = <Results back={() => setView("app")} />;
+  else if (!LIVE && state.view === "tests") screen = <Tests back={() => setView("app")} />;
+  else if (state.live && state.stage === "gate") screen = <LiveGate initialCode={roomFromUrl()} onJoined={join} />;
+  else if (state.stage === "onboarding") screen = <Onboarding onDone={(a, h, standing, hook) => { update((s) => ({ answers: a, home: h, standing, hook, stage: "reveal", m1: {}, vote: null, slot: null, poked: false, run: s.run + 1 })); scrollTop(); }} />;
+  else if (state.stage === "reveal") screen = <GroupReveal {...props} />;
+  else if (state.stage === "intros") screen = <CrewChat {...props} />;
+  else if (state.stage === "meeting1") screen = <Meeting1 {...props} />;
+  else if (state.stage === "after1") screen = <AfterMeeting1 {...props} />;
+  else if (state.stage === "between") screen = <BetweenMeetings {...props} />;
+  else if (state.stage === "meeting2") screen = <Meeting2 {...props} />;
+  else screen = <CheckIn game={game} personas={personas} live={!!state.live} code={state.code} sessionCode={session?.code} token={session?.token} />;
+
+  const usingDemo = !LIVE && !state.answers && state.stage !== "onboarding" && state.view === "app";
+  const where = state.stage === "gate" ? "Join a table" : state.view === "app" ? `${Math.max(stageIndex, 0) + 1}/${STAGES.length} · ${STAGES[stageIndex]?.[1] || ""}` : state.view === "results" ? "Results" : "Tests";
+  return (
+    <div className="flex-1 flex flex-col">
+      <header className="sticky z-40 text-white" style={{ top: "env(safe-area-inset-top, 0px)", background: "var(--header)" }}>
+        <div className="max-w-[560px] mx-auto gutter h-14 flex items-center justify-between gap-3">
+          <button onClick={() => go(state.live ? (session ? "reveal" : "gate") : "onboarding")} className="rt-display font-extrabold text-xl flex items-center gap-2 cursor-pointer text-white"><span aria-hidden="true">🍓</span>{APP_NAME}</button>
+          <span className="text-xs sm:text-sm font-semibold text-white/80 truncate">{state.code ? `${state.code} · ` : ""}{where}</span>
+        </div>
+      </header>
+      {usingDemo && <div className="bg-[var(--gold)] text-[var(--on-gold)] text-sm text-center py-1.5 font-semibold gutter">Using demo answers. Do onboarding to use yours.</div>}
+      {state.noOverlap && !state.live && state.view === "app" && <div className="bg-[var(--blue)] text-white text-sm text-center py-1.5 font-semibold gutter">No-overlap path: the personas always picked the other vibe</div>}
+      {state.gateError && state.stage === "gate" && <div className="bg-[var(--gold)] text-[var(--on-gold)] text-sm text-center py-1.5 font-semibold gutter">{state.gateError}</div>}
+      <main key={`${state.stage}-${state.view}-${state.run}`} className="flex-1 flex flex-col">{screen}</main>
+      {!LIVE && <DemoNav state={state} go={go} setView={setView} reset={() => { store.remove(STATE_KEY); setState({ ...INITIAL, run: state.run + 1 }); scrollTop(); }} toggleFallback={() => update((s) => ({ noOverlap: !s.noOverlap }))} />}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("rt-root")).render(<App />);
+</script>
+
+<script>
+(function boot() {
+  if (!window.React || !window.ReactDOM || !window.Babel) return setTimeout(boot, 50);
+  try {
+    var src = document.getElementById("rt-src").textContent;
+    var code = Babel.transform(src, { presets: ["react"] }).code;
+    new Function(code)();
+  } catch (e) {
+    var root = document.getElementById("rt-root");
+    root.innerHTML = "";
+    var pre = document.createElement("pre");
+    pre.className = "gutter";
+    pre.style.cssText = "color:var(--danger);white-space:pre-wrap;font-size:13px;padding-block:24px";
+    pre.textContent = "Strawberry failed to start: " + (e && e.message || e);
+    root.appendChild(pre);
+  }
+})();
+</script>
+</body>
+</html>
