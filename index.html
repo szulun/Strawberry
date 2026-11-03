@@ -660,7 +660,7 @@ function OnboardingSteps({ onDone, cardsOnly, askSecret }) {
           <PickCard key={CARDS[i].id} card={CARDS[i]} onPick={(key) => { setAnswers({ ...answers, [CARDS[i].id]: key }); setI(i + 1); }} />
           <p className="text-center text-sm text-[var(--muted)]">↖ ↗ drag toward your pick, or tap it ↙ ↘</p>
         </>
-      ) : homeKey && cardsOnly ? (
+      ) : homeKey && cardsOnly && askSecret ? (
         <div className="rt-pop flex flex-col gap-4 rounded-3xl bg-[var(--surface)] border border-[var(--line)] p-4 sm:p-5 shadow-[0_8px_0_var(--line)]">
           <p className="text-center text-xs font-bold text-[var(--muted)] uppercase tracking-widest">Only you keep this</p>
           <p className="rt-display text-2xl sm:text-3xl font-extrabold text-center">The true answer</p>
@@ -705,7 +705,7 @@ function OnboardingSteps({ onDone, cardsOnly, askSecret }) {
           <p className="rt-display text-2xl sm:text-3xl font-extrabold text-center">What would you love to talk about from where you're from?</p>
           <div className="grid grid-cols-2 gap-3">
             {HOME_OPTIONS.map((o) => (
-              <button key={o.key} onClick={() => setHomeKey(o.key)} className="rounded-2xl bg-[var(--pink-soft)] border-2 border-transparent py-6 flex flex-col items-center gap-2 active:scale-95 transition cursor-pointer hover:border-[var(--coral)]">
+              <button key={o.key} onClick={() => { if (cardsOnly && !askSecret) onDone(answers, o.key, ""); else setHomeKey(o.key); }} className="rounded-2xl bg-[var(--pink-soft)] border-2 border-transparent py-6 flex flex-col items-center gap-2 active:scale-95 transition cursor-pointer hover:border-[var(--coral)]">
                 <span className="text-4xl">{o.emoji}</span><span className="font-semibold">{o.label}</span>
               </button>
             ))}
@@ -1192,6 +1192,27 @@ function SealLine({ personas, onDone, live }) {
 function AfterMeeting1({ game, personas, state, update, next, live }) {
   const [copied, setCopied] = useState("");
   const [error, setError] = useState("");
+  if (live) {
+    const activity = activityOf(state.activity, state.place);
+    return (
+      <Screen>
+        <Chip>After meeting 1</Chip>
+        <Title>Same activity, next time</Title>
+        <p className="text-[var(--muted)]">Meeting 2 continues this table. It does not start a new activity.</p>
+        <div className="rounded-3xl bg-[var(--coral)] text-white p-5">
+          <p className="text-xs font-bold uppercase tracking-widest text-white/80">The hook</p>
+          <p className="rt-display text-3xl font-extrabold mt-1">{activity.emoji} {activity.title}</p>
+          <p className="mt-1 text-white/90">{activity.place}</p>
+        </div>
+        <section className="flex flex-col gap-3">
+          <h2 className="rt-display text-xl font-bold">Lock a time</h2>
+          <div className="flex gap-2 flex-wrap">{ROUNDS.slots.map((s) => <button key={s} onClick={() => { update({ slot: s }); setError(""); }} className={`min-h-[44px] rounded-full px-4 py-2 font-semibold border-2 cursor-pointer ${state.slot === s ? "bg-[var(--blue)] text-[var(--gold)] border-[var(--blue)]" : "bg-[var(--surface)] border-[var(--line)]"}`}>{state.slot === s ? "🔒 " : ""}{s}</button>)}</div>
+        </section>
+        <Btn onClick={() => (state.slot ? next() : setError("Lock a time first."))}>See you then →</Btn>
+        {error && <p className="text-sm text-[var(--danger)] -mt-3">{error}</p>}
+      </Screen>
+    );
+  }
   const results = state.m1?.missionResults || defaultResults(game.missions);
   const wrong = results.find((r) => !r.correct);
   const memoryLine = wrong
@@ -1323,7 +1344,7 @@ function BetweenMeetings({ game, personas, state, update, next, live }) {
 function Meeting2({ game, personas, state, next, live }) {
   const [opened, setOpened] = useState(false);
   const [box, setBox] = useState(false);
-  const act = game.activities[state.vote ?? 0];
+  const act = live ? activityOf(state.activity, state.place) : game.activities[state.vote ?? 0];
   const lines = live
     ? [{ name: "You", text: state.capsule || "Next time, ask me what I didn't say." }, ...personas.map((p) => ({ name: p.name, text: p.capsule || (p.hasCapsule ? "Sealed. Open yours to read it." : "Hasn't sealed a line yet.") }))]
     : [{ name: "You", text: state.capsule || "Next time, ask me what I didn't say." }, ...personas.map((p) => ({ name: p.name, text: LEFTOVER[p.name].line }))];
@@ -1332,13 +1353,13 @@ function Meeting2({ game, personas, state, next, live }) {
     <TableShell chip="📱 Meeting 2" title="Open what you didn't finish">
       <p className="text-white/85 text-lg">These lines were sealed at the café. They open because you're together again.</p>
       {lines.map((l) => <div key={l.name} className="rounded-2xl bg-white/10 p-4"><p className="text-xs font-bold uppercase tracking-widest text-[var(--gold)]">{l.name}</p><p className="text-lg mt-1">{l.text}</p></div>)}
-      <div className="rounded-2xl bg-[var(--gold)] text-[var(--on-gold)] p-4">
-        <p className="text-xs font-bold uppercase tracking-widest">Still on the Berkeley list</p>
-        {live
-          ? personas.map((p) => <p key={p.name} className="mt-1"><b>{p.name}:</b> {p.wish || "Still writing theirs."}</p>)
-          : personas.map((p) => <p key={p.name} className="mt-1"><b>{p.name}:</b> {BERKELEY_LIST[p.name]}</p>)}
-        {state.wish && <p className="mt-1"><b>You:</b> {state.wish}</p>}
-      </div>
+      {!live && (
+        <div className="rounded-2xl bg-[var(--gold)] text-[var(--on-gold)] p-4">
+          <p className="text-xs font-bold uppercase tracking-widest">Still on the Berkeley list</p>
+          {personas.map((p) => <p key={p.name} className="mt-1"><b>{p.name}:</b> {BERKELEY_LIST[p.name]}</p>)}
+          {state.wish && <p className="mt-1"><b>You:</b> {state.wish}</p>}
+        </div>
+      )}
       <Btn onClick={() => setOpened(true)}>Start from these lines</Btn>
     </TableShell>
   );
@@ -1599,9 +1620,10 @@ function Field({ id, label, value, set, placeholder, maxLength = 40 }) {
 }
 
 function LiveGate({ initialCode, onJoined }) {
+  const [step, setStep] = useState("profile");
   const [mode, setMode] = useState(initialCode ? "join" : "");
   const [form, setForm] = useState({ name: "", email: "", from: "", standing: "", activity: "", when: "", place: "", code: initialCode || "" });
-  const [ready, setReady] = useState(false);
+  const [cards, setCards] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const set = (k) => (v) => { setForm((f) => ({ ...f, [k]: v })); setError(""); };
@@ -1610,28 +1632,70 @@ function LiveGate({ initialCode, onJoined }) {
     if (!/^[^\s@]+@berkeley\.edu$/i.test(form.email.trim())) return setError("Use your @berkeley.edu email.");
     if (form.from.trim().length < 2) return setError("Add where you're from.");
     if (!form.standing) return setError("Say if you're an undergrad, an exchange student, or a grad student.");
-    if (mode === "host") {
+    setError("");
+    setStep("cards");
+  };
+  const submit = async (modeName) => {
+    if (modeName === "host") {
       if (form.activity.trim().length < 2) return setError("Name the activity. That is the hook.");
       if (form.when.trim().length < 2) return setError("Add when you meet.");
       if (form.place.trim().length < 2) return setError("Add where you meet.");
     } else if (!/^[A-Z0-9]{4}$/i.test(form.code.trim())) return setError("Enter the 4-character code.");
-    setReady(true);
+    setBusy(true); setError("");
+    try {
+      await onJoined({ ...form, code: form.code.trim().toUpperCase(), answers: cards.answers, home: cards.home, secret: "", mode: modeName });
+    } catch (e) {
+      setBusy(false);
+      setError(e.message || "Could not reach the sheet.");
+    }
   };
-  if (!mode) return (
+  if (step === "cards") return (
+    <div className="flex-1 flex flex-col">
+      <Onboarding cardsOnly onDone={(answers, home) => { setCards({ answers, home }); setStep("table"); }} />
+    </div>
+  );
+  if (step === "table" && !mode) return (
     <Screen center>
       <div className="rt-pop flex flex-col gap-5">
         <div className="text-6xl">🍓</div>
-        <Title big>Show up for one activity.</Title>
-        <p className="text-lg text-[var(--muted)]">Open a table, or join one with a code. The people who join are the group.</p>
-        <Btn onClick={() => setMode("host")}>Host a table</Btn>
-        <Btn ghost onClick={() => setMode("join")}>Join with a code</Btn>
+        <Title big>You're in. Now find a table.</Title>
+        <p className="text-lg text-[var(--muted)]">Open one activity, or join with a code. The activity is why you sit together.</p>
+        <Btn onClick={() => { setError(""); setMode("host"); }}>Host a table</Btn>
+        <Btn ghost onClick={() => { setError(""); setMode("join"); }}>Join with a code</Btn>
       </div>
     </Screen>
   );
-  if (!ready) return (
+  if (step === "table") return (
     <Screen>
       <button onClick={() => setMode("")} className="self-start font-semibold text-[var(--muted)] cursor-pointer min-h-[44px]">← Back</button>
       <Title>{mode === "host" ? "Host a table" : "Join a table"}</Title>
+      {mode === "host" ? (
+        <>
+          <p className="font-semibold">The activity for this table</p>
+          <div className="flex flex-wrap gap-2">
+            {ACTIVITY_HOOKS.map((a) => (
+              <button key={a} onClick={() => set("activity")(a)} className={`min-h-[44px] rounded-full px-4 py-2 text-sm font-semibold border-2 cursor-pointer ${form.activity === a ? "bg-[var(--coral)] text-white border-[var(--coral)]" : "bg-[var(--surface)] border-[var(--line)]"}`}>{a}</button>
+            ))}
+          </div>
+          <Field id="activity" label="Or name it" value={form.activity} set={set("activity")} placeholder="Boba crawl" />
+          <Field id="when" label="When" value={form.when} set={set("when")} placeholder="Thursday · 5:30 pm" maxLength={60} />
+          <Field id="place" label="Where" value={form.place} set={set("place")} placeholder="A café near Sproul" maxLength={80} />
+          <Btn onClick={() => submit("host")}>{busy ? "Opening…" : "Open the table"}</Btn>
+        </>
+      ) : (
+        <>
+          <Field id="code" label="Table code" value={form.code} set={(v) => set("code")(v.toUpperCase())} placeholder="AB3K" maxLength={4} />
+          <Btn onClick={() => submit("join")}>{busy ? "Joining…" : "Join the table"}</Btn>
+        </>
+      )}
+      {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
+    </Screen>
+  );
+  return (
+    <Screen>
+      <div className="text-5xl">🍓</div>
+      <Title big>Start with you.</Title>
+      <p className="text-lg text-[var(--muted)]">Name, email, and where you're from. The table comes after.</p>
       <Field id="name" label="Your name" value={form.name} set={set("name")} placeholder="Alex" />
       <Field id="email" label="Berkeley email" value={form.email} set={set("email")} placeholder="you@berkeley.edu" maxLength={80} />
       <Field id="from" label="Where you're from" value={form.from} set={set("from")} placeholder="Taipei" />
@@ -1644,37 +1708,9 @@ function LiveGate({ initialCode, onJoined }) {
         </div>
         {form.standing === "grad" && <p className="text-sm text-[var(--muted)]">Grad students in round 1 mostly showed up for a class reason. Stay if you actually want to meet again.</p>}
       </div>
-      {mode === "host" ? (
-        <>
-          <p className="font-semibold">The activity for this table</p>
-          <div className="flex flex-wrap gap-2">
-            {ACTIVITY_HOOKS.map((a) => (
-              <button key={a} onClick={() => set("activity")(a)} className={`min-h-[44px] rounded-full px-4 py-2 text-sm font-semibold border-2 cursor-pointer ${form.activity === a ? "bg-[var(--coral)] text-white border-[var(--coral)]" : "bg-[var(--surface)] border-[var(--line)]"}`}>{a}</button>
-            ))}
-          </div>
-          <Field id="activity" label="Or name it" value={form.activity} set={set("activity")} placeholder="Boba crawl" />
-          <Field id="when" label="When" value={form.when} set={set("when")} placeholder="Thursday · 5:30 pm" maxLength={60} />
-          <Field id="place" label="Where" value={form.place} set={set("place")} placeholder="A café near Sproul" maxLength={80} />
-        </>
-      ) : <Field id="code" label="Table code" value={form.code} set={(v) => set("code")(v.toUpperCase())} placeholder="AB3K" maxLength={4} />}
       {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
       <Btn onClick={startCards}>Next: the cards</Btn>
     </Screen>
-  );
-  return (
-    <div className="flex-1 flex flex-col">
-      {busy && <p className="gutter pt-4 font-semibold">Saving your table…</p>}
-      {error && <p className="gutter pt-2 text-sm text-[var(--danger)]">{error}</p>}
-      <Onboarding cardsOnly askSecret onDone={async (answers, home, secret) => {
-        setBusy(true); setError("");
-        try {
-          await onJoined({ ...form, code: form.code.trim().toUpperCase(), answers, home, secret, mode });
-        } catch (e) {
-          setBusy(false);
-          setError(e.message || "Could not reach the sheet.");
-        }
-      }} />
-    </div>
   );
 }
 
@@ -1759,7 +1795,10 @@ function App() {
   }, [state.live, state.people, state.noOverlap, answers]);
   const game = useMemo(() => buildGame(answers, home, personas, { live: state.live }), [answers, home, personas, state.live]);
   const stageIndex = STAGES.findIndex(([k]) => k === state.stage);
-  const nextStage = () => go(STAGES[Math.max(stageIndex, 0) + 1][0]);
+  const nextStage = () => {
+    if (state.live && state.stage === "after1") { go("meeting2"); return; }
+    go(STAGES[Math.max(stageIndex, 0) + 1][0]);
+  };
   const plan = { when: state.when || ROUNDS.meetup1.when, place: state.place || ROUNDS.meetup1.place };
   const props = { game, personas, home, state, update, next: nextStage, live: !!state.live, plan, intro: state.intro, onIntro: (line) => update({ intro: line }) };
 
@@ -1793,7 +1832,7 @@ function App() {
   else screen = <CheckIn game={game} personas={personas} live={!!state.live} code={state.code} sessionCode={session?.code} token={session?.token} />;
 
   const usingDemo = !LIVE && !state.answers && state.stage !== "onboarding" && state.view === "app";
-  const where = state.stage === "gate" ? "Join a table" : state.view === "app" ? `${Math.max(stageIndex, 0) + 1}/${STAGES.length} · ${STAGES[stageIndex]?.[1] || ""}` : state.view === "results" ? "Results" : "Tests";
+  const where = state.stage === "gate" ? "You" : state.view === "app" ? `${Math.max(stageIndex, 0) + 1}/${STAGES.length} · ${STAGES[stageIndex]?.[1] || ""}` : state.view === "results" ? "Results" : "Tests";
   return (
     <div className="flex-1 flex flex-col">
       <header className="sticky z-40 text-white" style={{ top: "env(safe-area-inset-top, 0px)", background: "var(--header)" }}>
