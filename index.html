@@ -1109,7 +1109,43 @@ function CrewList({ results, personas, dark }) {
   );
 }
 
-function Meeting1({ game, personas, update, next, live }) {
+function TableIcebreaker({ game, personas, state, session, onDone }) {
+  const [prompts, setPrompts] = useState([]);
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(true);
+  const backup = (MINI_GAMES.find((g) => g.id === "truths") || {}).deck || [];
+  const context = [state.activity, ...personas.map((p) => String(p.from || "").split(",")[0].trim()).filter(Boolean), ...(game.shares || []).map((s) => s.label)].filter(Boolean).join(" · ");
+  const load = (refresh) => {
+    setBusy(true);
+    api("icebreaker", {
+      code: session && session.code, token: session && session.token, refresh: !!refresh,
+      shares: (game.shares || []).map((s) => s.label),
+    }).then((data) => {
+      setPrompts(data.prompts || []);
+      setNote((data.prompts || []).length ? "" : (data.error || "Using the backup prompts for this table."));
+    }).catch((e) => {
+      setPrompts([]);
+      setNote(e.message || "Using the backup prompts for this table.");
+    }).finally(() => setBusy(false));
+  };
+  useEffect(() => { load(false); }, []);
+  const deck = prompts.length ? prompts : backup.slice(0, 3);
+  return (
+    <TableShell chip="📱 Meeting 1" title="Icebreaker for this table">
+      <p className="text-white/75 text-sm">{context}</p>
+      {busy ? <p className="text-lg">Writing one for this activity and the people here…</p> : (
+        <div className="flex flex-col gap-3">
+          {deck.map((line) => <div key={line} className="rounded-3xl bg-[var(--gold)] text-[var(--on-gold)] p-5 rt-pop"><p className="rt-display text-xl font-extrabold leading-snug">{line}</p></div>)}
+        </div>
+      )}
+      {note && <p className="text-sm text-[var(--gold)]">{note}</p>}
+      <Btn ghost dark onClick={() => load(true)}>{busy ? "Writing…" : "Write another"}</Btn>
+      <Btn onClick={onDone}>Now the secret mission</Btn>
+    </TableShell>
+  );
+}
+
+function Meeting1({ game, personas, update, next, live, state, session }) {
   const [step, setStep] = useState("intro");
   const [typed, setTyped] = useState({});
   if (!game.missions.length) return (
@@ -1123,11 +1159,12 @@ function Meeting1({ game, personas, update, next, live }) {
       <div className="flex flex-col gap-5 text-center items-center rt-pop">
         <div className="text-7xl">☕🕵️</div>
         <Title dark big>Welcome to meeting 1.</Title>
-        <p className="text-white/80 text-lg max-w-[40ch]">Start with two truths and a lie. Then one secret mission: get a true answer, and ask why it matters. That is the connection.</p>
-        <Btn onClick={() => setStep("opening")}>Start the opening game</Btn>
+        <p className="text-white/80 text-lg max-w-[40ch]">{live ? "The opening lines are written for this activity and the people at the table. Then one secret mission: get a true answer, and ask why it matters." : "Start with two truths and a lie. Then one secret mission: get a true answer, and ask why it matters. That is the connection."}</p>
+        <Btn onClick={() => setStep(live ? "ice" : "opening")}>{live ? "Make our icebreaker" : "Start the opening game"}</Btn>
       </div>
     </TableShell>
   );
+  if (step === "ice") return <TableIcebreaker game={game} personas={personas} state={state} session={session} onDone={() => setStep("brief")} />;
   if (step === "opening") {
     const opener = MINI_GAMES.find((g) => g.id === "truths");
     return (
@@ -1825,7 +1862,7 @@ function App() {
   else if (state.stage === "onboarding") screen = <Onboarding onDone={(a, h, standing, hook) => { update((s) => ({ answers: a, home: h, standing, hook, stage: "reveal", m1: {}, vote: null, slot: null, poked: false, run: s.run + 1 })); scrollTop(); }} />;
   else if (state.stage === "reveal") screen = <GroupReveal {...props} />;
   else if (state.stage === "intros") screen = <CrewChat {...props} />;
-  else if (state.stage === "meeting1") screen = <Meeting1 {...props} />;
+  else if (state.stage === "meeting1") screen = <Meeting1 {...props} session={session} />;
   else if (state.stage === "after1") screen = <AfterMeeting1 {...props} />;
   else if (state.stage === "between") screen = <BetweenMeetings {...props} />;
   else if (state.stage === "meeting2") screen = <Meeting2 {...props} />;
