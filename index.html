@@ -4,6 +4,25 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Strawberry</title>
+<script>
+/* First visit plays intro_c.html. A room link, a saved sign-in, or a seen flag skips it. */
+(function () {
+  try {
+    var q = new URLSearchParams(location.search);
+    if (q.get("intro") === "1") {
+      try { localStorage.setItem("strawberry.intro.v1", "1"); } catch (e) {}
+      q.delete("intro");
+      history.replaceState(null, "", location.pathname + (q.toString() ? "?" + q : "") + location.hash);
+      return;
+    }
+    if ((q.get("room") || "").trim()) return;
+    if (localStorage.getItem("strawberry.intro.v1")) return;
+    if (localStorage.getItem("strawberry.user.v1")) return;
+    if (localStorage.getItem("strawberry.session.v1")) return;
+    location.replace("intro_c.html");
+  } catch (e) {}
+})();
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&family=Figtree:wght@400;500;600;700&display=swap">
