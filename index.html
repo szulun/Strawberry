@@ -306,6 +306,12 @@ const PREMEET_CHAT = [
   { from: "Jordan", text: "I'm in for the crawl. I can walk from campus." },
 ];
 const ACTIVITY_HOOKS = ["Boba crawl", "Cook together", "Karaoke", "Hike", "Escape room", "Picnic"];
+// Shown only from "Let Strawberry find your table". Not rooms. Nothing here can be joined.
+const EXAMPLE_TABLES = [
+  { emoji: "🧋", activity: "Boba crawl", when: "Thursday · 5:30 pm", place: "A café near Sproul", seats: "4 seats open", people: [["Lena", "Taipei"], ["Omar", "Cairo"]], share: "You and Lena both like spicy food." },
+  { emoji: "🧺", activity: "Picnic", when: "Saturday · 1:00 pm", place: "Memorial Glade", seats: "3 seats open", people: [["Hana", "Seoul"], ["Theo", "Lyon"]], share: "You showed up for the same activity." },
+  { emoji: "🎤", activity: "Karaoke", when: "Friday · 8:00 pm", place: "A room on Durant", seats: "2 seats open", people: [["Priya", "Mumbai"], ["Jonah", "Oakland"]], share: "You and Jonah both like old songs." },
+];
 // Round 2 answers do not live in this file. Paste a Google Form formResponse URL and the entry ids.
 // Leave CHECKIN_FORM empty during the demo; answers stay in this browser until the form is connected.
 const CHECKIN_FORM = "";
@@ -1823,7 +1829,29 @@ function LiveGate({ initialCode, onJoined }) {
         <p className="text-lg text-[var(--muted)]">Open one activity, or sit down at a table that already exists. Up to six people.</p>
         <Btn onClick={() => { setError(""); setMode("host"); }}>Host a table</Btn>
         <Btn ghost onClick={() => { setError(""); setMode("join"); }}>Join with a code</Btn>
+        <button type="button" onClick={() => { setError(""); setMode("examples"); }} className="w-full rounded-2xl px-5 py-3.5 text-left border-2 border-[var(--blue)] bg-[var(--surface)] cursor-pointer">
+          <span className="block rt-display font-extrabold text-lg">Let Strawberry find your table</span>
+          <span className="block mt-0.5 text-sm font-medium text-[var(--muted)]">Look at up to three open tables. These three are examples.</span>
+        </button>
       </div>
+    </Screen>
+  );
+  if (step === "table" && mode === "examples") return (
+    <Screen>
+      <button onClick={() => setMode("")} className="self-start font-semibold text-[var(--muted)] cursor-pointer min-h-[44px]">← Back</button>
+      <Title>Pick one table.</Title>
+      <p className="text-lg text-[var(--muted)]">Examples only. These are not rooms, and you cannot join them.</p>
+      {EXAMPLE_TABLES.map((t) => (
+        <div key={t.activity} className="rounded-3xl bg-[var(--surface)] border border-[var(--line)] p-4 sm:p-5 shadow-[0_8px_0_var(--line)] flex flex-col gap-2">
+          <Chip>Example</Chip>
+          <p className="rt-display text-2xl font-extrabold">{t.emoji} {t.activity}</p>
+          <p className="text-[var(--muted)]">{t.when}<br />{t.place}</p>
+          <p className="font-bold">{t.seats}</p>
+          <p>{t.people.map(([name, from]) => <span key={name} className="block">{name} · {from}</span>)}</p>
+          <p className="rounded-2xl bg-[#FFF6D8] px-3 py-2.5 font-semibold">{t.share}</p>
+          <p className="text-sm text-[var(--muted)]">Example only. Not a table you can join.</p>
+        </div>
+      ))}
     </Screen>
   );
   if (step === "table") return (
