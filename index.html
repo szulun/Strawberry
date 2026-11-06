@@ -50,6 +50,7 @@ button:focus-visible, textarea:focus-visible { outline: 3px solid var(--gold); o
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.1.4"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
 <script type="text/plain" id="rt-src">
 const { useState, useEffect, useRef, useMemo } = React;
@@ -63,6 +64,13 @@ const APP_NAME = "Strawberry";
 const API_URL = "https://script.google.com/macros/s/AKfycbzhoXrhnfcgcWELtI_jlJXDen-jKRkJl3y4jce4zArYUaxMmV9w68MfzFmjxxH9BNyT/exec";
 const LIVE = /^https:\/\/script\.google\.com\//.test(API_URL);
 const SESSION_KEY = "strawberry.session.v1";
+// Test phase only. Set to false before a real Berkeley round.
+const ALLOW_GMAIL = true;
+function emailOk(value) {
+  const email = String(value || "").trim();
+  if (/^[^\s@]+@berkeley\.edu$/i.test(email)) return true;
+  return ALLOW_GMAIL && /^[^\s@]+@gmail\.com$/i.test(email);
+}
 const HOOKS = {
   "Boba crawl": { emoji: "🧋", title: "Boba crawl", place: "Sit down after the first cup" },
   "Cook together": { emoji: "🍳", title: "Cook together", place: "One kitchen, one meal" },
@@ -776,9 +784,12 @@ function GroupReveal({ game, personas, state, next, live, plan }) {
         <p className="text-sm text-[var(--muted)] mt-2 italic">{live ? "Same activity, same table." : ROUNDS.meetup1.why}</p>
       </div>
       {live && (
-        <div className={`${CARD} p-4 flex flex-col gap-2`}>
-          <p className="text-xs font-bold uppercase tracking-widest text-[var(--muted)]">Invite link</p>
-          <p className="font-semibold break-all">{link}</p>
+        <div className={`${CARD} p-4 flex flex-col items-center gap-3 text-center`}>
+          <p className="text-xs font-bold uppercase tracking-widest text-[var(--muted)]">Scan to join this table</p>
+          <RoomQr url={link} />
+          <p className="rt-display text-4xl font-extrabold tracking-[0.18em]">{state.code}</p>
+          <p className="text-sm text-[var(--muted)]">Scan the code, type these four letters, or send the link.</p>
+          <p className="font-semibold break-all text-sm">{link}</p>
           <Btn ghost onClick={() => { navigator.clipboard.writeText(link).then(() => setCopied(true)).catch(() => setCopied(false)); }}>Copy link</Btn>
           {copied && <p className="text-sm text-[var(--ok)] font-semibold">Copied. Send it to the people coming.</p>}
         </div>
@@ -1642,6 +1653,15 @@ function DemoNav({ state, go, setView, reset, toggleFallback }) {
 function roomFromUrl() {
   try { return (new URLSearchParams(location.search).get("room") || "").trim().toUpperCase(); } catch { return ""; }
 }
+function RoomQr({ url }) {
+  const box = useRef(null);
+  useEffect(() => {
+    if (!box.current || !url || typeof QRCode === "undefined") return;
+    box.current.innerHTML = "";
+    new QRCode(box.current, { text: url, width: 220, height: 220, colorDark: "#16251E", colorLight: "#FFFFFF", correctLevel: QRCode.CorrectLevel.M });
+  }, [url]);
+  return <div ref={box} className="bg-white p-3 rounded-2xl leading-none" />;
+}
 function loadSession() {
   const s = store.get(SESSION_KEY, null);
   return s && s.token && s.code ? s : null;
@@ -1666,7 +1686,7 @@ function LiveGate({ initialCode, onJoined }) {
   const set = (k) => (v) => { setForm((f) => ({ ...f, [k]: v })); setError(""); };
   const startCards = () => {
     if (form.name.trim().length < 2) return setError("Add your name.");
-    if (!/^[^\s@]+@berkeley\.edu$/i.test(form.email.trim())) return setError("Use your @berkeley.edu email.");
+    if (!emailOk(form.email)) return setError(ALLOW_GMAIL ? "Use your @berkeley.edu or a Gmail address." : "Use your @berkeley.edu email.");
     if (form.from.trim().length < 2) return setError("Add where you're from.");
     if (!form.standing) return setError("Say if you're an undergrad, an exchange student, or a grad student.");
     setError("");
@@ -1734,7 +1754,8 @@ function LiveGate({ initialCode, onJoined }) {
       <Title big>Start with you.</Title>
       <p className="text-lg text-[var(--muted)]">Name, email, and where you're from. The table comes after.</p>
       <Field id="name" label="Your name" value={form.name} set={set("name")} placeholder="Alex" />
-      <Field id="email" label="Berkeley email" value={form.email} set={set("email")} placeholder="you@berkeley.edu" maxLength={80} />
+      <Field id="email" label={ALLOW_GMAIL ? "Berkeley email or Gmail" : "Berkeley email"} value={form.email} set={set("email")} placeholder={ALLOW_GMAIL ? "you@berkeley.edu or you@gmail.com" : "you@berkeley.edu"} maxLength={80} />
+      {ALLOW_GMAIL && <p className="text-sm text-[var(--muted)]">Gmail is only for testing at home. One address is still one person, even on a phone and a computer.</p>}
       <Field id="from" label="Where you're from" value={form.from} set={set("from")} placeholder="Taipei" />
       <div className="flex flex-col gap-2">
         <p className="font-semibold">You are</p>
