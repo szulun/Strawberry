@@ -64,6 +64,7 @@ const APP_NAME = "Strawberry";
 const API_URL = "https://script.google.com/macros/s/AKfycbzhoXrhnfcgcWELtI_jlJXDen-jKRkJl3y4jce4zArYUaxMmV9w68MfzFmjxxH9BNyT/exec";
 const LIVE = /^https:\/\/script\.google\.com\//.test(API_URL);
 const SESSION_KEY = "strawberry.session.v1";
+const USER_KEY = "strawberry.user.v1";
 // Test phase only. Set to false before a real Berkeley round.
 const ALLOW_GMAIL = true;
 function emailOk(value) {
@@ -762,10 +763,17 @@ function GroupReveal({ game, personas, state, next, live, plan }) {
           </div>
         ))}
       </div>
-      <div className="rounded-3xl bg-[var(--blue)] text-white p-5">
-        <p className="text-[var(--gold)] text-xs font-bold uppercase tracking-widest mb-1">Why this group</p>
-        <p className="rt-display text-2xl font-bold leading-snug">{game.because}</p>
-      </div>
+      {live ? (
+        <div className={`${CARD} p-5 flex flex-col gap-2`}>
+          <p className="text-xs font-bold uppercase tracking-widest text-[var(--coral)]">At this table</p>
+          {(shareLines(game).length ? shareLines(game) : ["You showed up for the same activity."]).map((line) => <p key={line} className="text-lg font-semibold">{line}</p>)}
+        </div>
+      ) : (
+        <div className="rounded-3xl bg-[var(--blue)] text-white p-5">
+          <p className="text-[var(--gold)] text-xs font-bold uppercase tracking-widest mb-1">Why this group</p>
+          <p className="rt-display text-2xl font-bold leading-snug">{game.because}</p>
+        </div>
+      )}
       <div className={`${CARD} p-5 flex flex-col gap-3`}>
         <p className="text-xs font-bold uppercase tracking-widest text-[var(--coral)]">What you share</p>
         {game.shares.length ? (
@@ -1650,6 +1658,20 @@ function DemoNav({ state, go, setView, reset, toggleFallback }) {
   );
 }
 
+function shareLines(game) {
+  const lines = [];
+  (game.byCard || []).forEach((d) => {
+    if (!d.yours || d.yours.names.length < 2) return;
+    const others = d.yours.names.filter((n) => n !== "You");
+    if (!others.length) return;
+    lines.push(`You and ${others.join(" and ")} both like ${d.yours.option.label}.`);
+  });
+  return lines.slice(0, 3);
+}
+function loadUser() {
+  const s = store.get(USER_KEY, null);
+  return s && s.token && s.email ? s : null;
+}
 function roomFromUrl() {
   try { return (new URLSearchParams(location.search).get("room") || "").trim().toUpperCase(); } catch { return ""; }
 }
@@ -1677,30 +1699,97 @@ function Field({ id, label, value, set, placeholder, maxLength = 40 }) {
 }
 
 function LiveGate({ initialCode, onJoined }) {
-  const [step, setStep] = useState("profile");
+  const savedUser = loadUser();
+  const [step, setStep] = useState(savedUser ? "profile" : "email");
+  const [user, setUser] = useState(savedUser);
+  const [pin, setPin] = useState("");
   const [mode, setMode] = useState(initialCode ? "join" : "");
-  const [form, setForm] = useState({ name: "", email: "", from: "", standing: "", activity: "", when: "", place: "", code: initialCode || "" });
+  const [form, setForm] = useState({ name: "", email: savedUser ? savedUser.email : "", from: "", standing: "", activity: "", when: "", place: "", code: initialCode || "" });
   const [cards, setCards] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const set = (k) => (v) => { setForm((f) => ({ ...f, [k]: v })); setError(""); };
+  useEffect(() => {
+    if (!savedUser) return;
+    api("me", { userToken: savedUser.token }).then((data) => {
+      const profile = data.profile || {};
+      const answers = profile.answers || {};
+      setForm((f) => ({
+        ...f,
+        email: data.email || savedUser.email,
+        name: profile.name || f.name,
+        from: profile.from || f.from,
+        standing: profile.standing || f.standing,
+      }));
+      if (profile.home && Object.keys(answers).length >= CARDS.length) setCards({ answers, home: profile.home });
+    }).catch(() => {
+      store.remove(USER_KEY);
+      setUser(null);
+      setStep("email");
+    });
+  }, []);
+  const sendCode = async () => {
+    if (!emailOk(form.email)) return setError(ALLOW_GMAIL ? "Use your @berkeley.edu or a Gmail address." : "Use your @berkeley.edu email.");
+    setBusy(true); setError("");
+    try {
+      await api("sendCode", { email: form.email.trim() });
+      setStep("code");
+    } catch (e) {
+      setError(e.message || "Could not send the code.");
+    }
+    setBusy(false);
+  };
+  const verify = async () => {
+    if (!/^\d{4}$/.test(pin.trim())) return setError("Enter the 4-digit code from your email.");
+    setBusy(true); setError("");
+    try {
+      const data = await api("verifyCode", { email: form.email.trim(), code: pin.trim() });
+      const next = { token: data.token, email: data.email };
+      store.set(USER_KEY, next);
+      setUser(next);
+      const profile = data.profile || {};
+      const answers = profile.answers || {};
+      setForm((f) => ({
+        ...f,
+        email: data.email,
+        name: profile.name || "",
+        from: profile.from || "",
+        standing: profile.standing || "",
+      }));
+      if (profile.home && Object.keys(answers).length >= CARDS.length) setCards({ answers, home: profile.home });
+      setStep("profile");
+    } catch (e) {
+      setError(e.message || "That code did not work.");
+    }
+    setBusy(false);
+  };
+  const switchEmail = () => {
+    store.remove(USER_KEY);
+    setUser(null);
+    setPin("");
+    setCards(null);
+    setForm((f) => ({ ...f, email: "", name: "", from: "", standing: "" }));
+    setStep("email");
+  };
   const startCards = () => {
     if (form.name.trim().length < 2) return setError("Add your name.");
     if (!emailOk(form.email)) return setError(ALLOW_GMAIL ? "Use your @berkeley.edu or a Gmail address." : "Use your @berkeley.edu email.");
     if (form.from.trim().length < 2) return setError("Add where you're from.");
     if (!form.standing) return setError("Say if you're an undergrad, an exchange student, or a grad student.");
     setError("");
+    if (cards) { setStep("table"); return; }
     setStep("cards");
   };
   const submit = async (modeName) => {
+    if (!user) return setError("Sign in again, then come back to the table.");
     if (modeName === "host") {
-      if (form.activity.trim().length < 2) return setError("Name the activity. That is the hook.");
+      if (form.activity.trim().length < 2) return setError("Name the activity. That is why you sit together.");
       if (form.when.trim().length < 2) return setError("Add when you meet.");
       if (form.place.trim().length < 2) return setError("Add where you meet.");
     } else if (!/^[A-Z0-9]{4}$/i.test(form.code.trim())) return setError("Enter the 4-character code.");
     setBusy(true); setError("");
     try {
-      await onJoined({ ...form, code: form.code.trim().toUpperCase(), answers: cards.answers, home: cards.home, secret: "", mode: modeName });
+      await onJoined({ ...form, code: form.code.trim().toUpperCase(), answers: cards.answers, home: cards.home, secret: "", mode: modeName, userToken: user.token });
     } catch (e) {
       setBusy(false);
       setError(e.message || "Could not reach the sheet.");
@@ -1715,8 +1804,8 @@ function LiveGate({ initialCode, onJoined }) {
     <Screen center>
       <div className="rt-pop flex flex-col gap-5">
         <div className="text-6xl">🍓</div>
-        <Title big>You're in. Now find a table.</Title>
-        <p className="text-lg text-[var(--muted)]">Open one activity, or join with a code. The activity is why you sit together.</p>
+        <Title big>Find a table.</Title>
+        <p className="text-lg text-[var(--muted)]">Open one activity, or sit down at a table that already exists. Up to six people.</p>
         <Btn onClick={() => { setError(""); setMode("host"); }}>Host a table</Btn>
         <Btn ghost onClick={() => { setError(""); setMode("join"); }}>Join with a code</Btn>
       </div>
@@ -1748,14 +1837,38 @@ function LiveGate({ initialCode, onJoined }) {
       {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
     </Screen>
   );
+  if (step === "email" || step === "code") return (
+    <Screen>
+      {step === "code" ? (
+        <>
+          <div className="text-5xl">🍓</div>
+          <Title big>Check your email.</Title>
+          <p className="text-lg text-[var(--muted)]">We sent a 4-digit code to {form.email}. It expires in 10 minutes.</p>
+          <Field id="pin" label="Code" value={pin} set={(v) => { setPin(v.replace(/\D/g, "").slice(0, 4)); setError(""); }} placeholder="0000" maxLength={4} />
+          {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
+          <Btn onClick={verify}>{busy ? "Checking…" : "Sign in"}</Btn>
+          <button onClick={() => { setStep("email"); setError(""); }} className="self-start font-semibold text-[var(--muted)] cursor-pointer min-h-[44px]">← Back</button>
+        </>
+      ) : (
+        <>
+          <div className="text-5xl">🍓</div>
+          <Title big>Sign in.</Title>
+          <p className="text-lg text-[var(--muted)]">Use your Berkeley email. We send a code. This phone remembers you after that.</p>
+          <Field id="email" label={ALLOW_GMAIL ? "Berkeley email or Gmail" : "Berkeley email"} value={form.email} set={set("email")} placeholder={ALLOW_GMAIL ? "you@berkeley.edu or you@gmail.com" : "you@berkeley.edu"} maxLength={80} />
+          {ALLOW_GMAIL && <p className="text-sm text-[var(--muted)]">Gmail is only for testing. One address is still one person.</p>}
+          {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
+          <Btn onClick={sendCode}>{busy ? "Sending…" : "Email me a code"}</Btn>
+        </>
+      )}
+    </Screen>
+  );
   return (
     <Screen>
       <div className="text-5xl">🍓</div>
-      <Title big>Start with you.</Title>
-      <p className="text-lg text-[var(--muted)]">Name, email, and where you're from. The table comes after.</p>
+      <Title big>Your seat.</Title>
+      <p className="text-lg text-[var(--muted)]">Name, where you're from, and whether you are here for a term or a degree. Then you find a table.</p>
+      <p className="text-sm text-[var(--muted)]">{form.email}</p>
       <Field id="name" label="Your name" value={form.name} set={set("name")} placeholder="Alex" />
-      <Field id="email" label={ALLOW_GMAIL ? "Berkeley email or Gmail" : "Berkeley email"} value={form.email} set={set("email")} placeholder={ALLOW_GMAIL ? "you@berkeley.edu or you@gmail.com" : "you@berkeley.edu"} maxLength={80} />
-      {ALLOW_GMAIL && <p className="text-sm text-[var(--muted)]">Gmail is only for testing at home. One address is still one person, even on a phone and a computer.</p>}
       <Field id="from" label="Where you're from" value={form.from} set={set("from")} placeholder="Taipei" />
       <div className="flex flex-col gap-2">
         <p className="font-semibold">You are</p>
@@ -1764,10 +1877,11 @@ function LiveGate({ initialCode, onJoined }) {
             <button key={s.key} onClick={() => set("standing")(s.key)} className={`min-h-[44px] rounded-full px-4 py-2 text-sm font-semibold border-2 cursor-pointer ${form.standing === s.key ? "bg-[var(--blue)] text-[var(--gold)] border-[var(--blue)]" : "bg-[var(--surface)] border-[var(--line)]"}`}>{s.label}</button>
           ))}
         </div>
-        {form.standing === "grad" && <p className="text-sm text-[var(--muted)]">Grad students in round 1 mostly showed up for a class reason. Stay if you actually want to meet again.</p>}
+        {form.standing === "grad" && <p className="text-sm text-[var(--muted)]">Stay if you want to meet again.</p>}
       </div>
       {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
-      <Btn onClick={startCards}>Next: the cards</Btn>
+      <Btn onClick={startCards}>{cards ? "Find a table" : "Next"}</Btn>
+      <button onClick={switchEmail} className="self-start font-semibold text-[var(--muted)] cursor-pointer min-h-[44px]">Use a different email</button>
     </Screen>
   );
 }
