@@ -376,7 +376,7 @@ function assignMissions(answers, home, personas, byPersona, opts) {
       guesser: guesser.name, target: target.name, topic,
       topicLabel: MISSION_TOPICS[topic].label, hint: MISSION_TOPICS[topic].hint,
       reason: i === 0
-        ? (opts.live ? `${target.name} is at your table. Ask, then ask why it matters.` : `You share only ${shared} pick${shared === 1 ? "" : "s"} with ${target.name}. Time to fix that.`)
+        ? (opts.live ? `Ask ${target.name}, then ask why it matters.` : `You share only ${shared} pick${shared === 1 ? "" : "s"} with ${target.name}. Time to fix that.`)
         : "",
       truth: fact ? fact.answer : null, // demo only
       simulatedGuess,
@@ -640,12 +640,12 @@ function OnboardingSteps({ onDone, cardsOnly, askSecret }) {
       <div className="rt-pop flex flex-col gap-5">
         <div className="text-6xl">🍓</div>
         <Title big>Connect with people, not just match.</Title>
-        <p className="text-lg text-[var(--muted)] max-w-[44ch]">Strawberry is for connection, not for making friends on a profile. The hook is an activity you do together. Then you meet again.</p>
+        <p className="text-lg text-[var(--muted)] max-w-[44ch]">You sit down for one activity. Then you meet again.</p>
         <div className="rounded-3xl bg-[var(--surface)] border border-[var(--line)] p-5 flex flex-col gap-3.5">
           <p className="text-xs font-bold uppercase tracking-widest text-[var(--muted)]">How it works</p>
           {[
             ["🃏", "Answer 9 quick cards", "About 30 seconds, no wrong answers."],
-            ["👋", "See your group", "Who's coming, why you were grouped, and the plan."],
+            ["👋", "See your group", "Who's coming, and the plan."],
             ["☕", "Say hi, then meet", "A mission gets you into a real conversation. Then phones down."],
             ["🔁", "Meet again", "Pick the next plan together, in a tap."],
           ].map(([e, t, d], k) => (
@@ -655,7 +655,6 @@ function OnboardingSteps({ onDone, cardsOnly, askSecret }) {
             </div>
           ))}
         </div>
-        <p className="text-sm text-[var(--muted)]">No profiles to swipe. You show up to do one thing. The conversation comes from doing it.</p>
         <Btn onClick={() => setStarted(true)}>Deal me in</Btn>
       </div>
     </Screen>
@@ -687,7 +686,6 @@ function OnboardingSteps({ onDone, cardsOnly, askSecret }) {
         <div className="rt-pop flex flex-col gap-4 rounded-3xl bg-[var(--surface)] border border-[var(--line)] p-4 sm:p-5 shadow-[0_8px_0_var(--line)]">
           <p className="text-center text-xs font-bold text-[var(--muted)] uppercase tracking-widest">Your hook</p>
           <p className="rt-display text-2xl sm:text-3xl font-extrabold text-center">What do you want to do together?</p>
-          <p className="text-sm text-[var(--muted)] text-center">The hook is the activity, not a fact about you. That is what puts you at the table.</p>
           <div className="flex flex-wrap gap-2 justify-center">
             {STANDINGS.map((s) => (
               <button key={s.key} onClick={() => { setStanding(s.key); setHookError(""); }} className={`min-h-[44px] rounded-full px-4 py-2 text-sm font-semibold border-2 cursor-pointer ${standing === s.key ? "bg-[var(--blue)] text-[var(--gold)] border-[var(--blue)]" : "bg-[var(--surface)] border-[var(--line)]"}`}>{s.label}</button>
@@ -734,7 +732,7 @@ function OnboardingSteps({ onDone, cardsOnly, askSecret }) {
 // STAGE 2 — GROUP REVEAL
 // =====================================================================
 function GroupReveal({ game, personas, state, next, live, plan }) {
-  const you = { ...YOU, standing: state.standing || "undergrad", hook: state.hook || "a boba crawl" };
+  const you = { ...YOU, standing: state.standing || "undergrad", hook: state.hook || (live ? state.activity : "a boba crawl"), from: state.from || "" };
   const people = [you, ...personas];
   const activity = live ? activityOf(state.activity, state.place) : game.activities[0];
   const when = plan?.when || ROUNDS.meetup1.when;
@@ -743,9 +741,8 @@ function GroupReveal({ game, personas, state, next, live, plan }) {
   const [copied, setCopied] = useState(false);
   return (
     <Screen>
-      <div className="flex items-center gap-2"><Chip>Verified Berkeley students</Chip>{live ? <span className="text-xs font-bold tracking-widest text-[var(--muted)]">CODE {state.code}</span> : <span className="text-xs text-[var(--muted)]">demo group</span>}</div>
+      <div className="flex items-center gap-2"><Chip>{live && ALLOW_GMAIL ? "Email verified" : "Verified Berkeley students"}</Chip>{live ? <span className="text-xs font-bold tracking-widest text-[var(--muted)]">CODE {state.code}</span> : <span className="text-xs text-[var(--muted)]">demo group</span>}</div>
       <Title>Your group, {game.groupName}</Title>
-      <p className="text-[var(--muted)]">You were not matched as friends. The hook is one activity.</p>
       <div className="rounded-3xl bg-[var(--coral)] text-white p-5">
         <p className="text-xs font-bold uppercase tracking-widest text-white/80">The hook</p>
         <p className="rt-display text-3xl font-extrabold mt-1">{activity.emoji} {activity.title}</p>
@@ -757,7 +754,7 @@ function GroupReveal({ game, personas, state, next, live, plan }) {
             <Avatar p={p} size={40} />
             <div className="min-w-0">
               <p className="font-bold leading-tight">{p.name} <span className="font-semibold text-[var(--muted)]">· {standingLabel(p.standing)}</span></p>
-              <p className="text-sm text-[var(--muted)]">{p.isYou ? "Berkeley" : p.from}</p>
+              {p.from ? <p className="text-sm text-[var(--muted)]">{p.from}</p> : null}
               <p className="text-sm">Showed up for <b>{p.hook}</b></p>
             </div>
           </div>
@@ -827,7 +824,7 @@ function CrewChat({ game, personas, next, live, plan, intro, onIntro }) {
   };
   return (
     <Screen>
-      <Chip>Before Thursday</Chip>
+      <Chip>Before you meet</Chip>
       <Title>{game.groupName}</Title>
       <p className="text-[var(--muted)]">Introduce yourself here. The plan stays pinned so nobody has to hunt for it.</p>
       <div className="rounded-2xl bg-[var(--blue)] text-white p-4">
@@ -857,9 +854,9 @@ function CrewChat({ game, personas, next, live, plan, intro, onIntro }) {
           <textarea id="intro" rows={2} maxLength={120} value={text} onChange={(e) => { setText(e.target.value); setError(""); }} placeholder="Name, what you study, one thing you're into" className="w-full rounded-2xl border-2 border-[var(--line)] bg-[var(--surface)] p-3 text-lg text-[var(--ink)] resize-none" />
           <Btn type="submit">Send</Btn>
         </form>
-      ) : <p className="text-sm text-[var(--ok)] font-semibold">You're in. See you Thursday.</p>}
+      ) : <p className="text-sm text-[var(--ok)] font-semibold">You're in. See you {when}.</p>}
       {error && <p className="text-sm text-[var(--danger)] -mt-2">{error}</p>}
-      <Btn ghost onClick={() => (mine ? next() : setError("Introduce yourself first."))}>It's Thursday →</Btn>
+      <Btn ghost onClick={() => (mine ? next() : setError("Introduce yourself first."))}>Start meeting 1 →</Btn>
     </Screen>
   );
 }
@@ -945,7 +942,6 @@ function MissionCard({ m, personas }) {
       <div className="flex items-center gap-3"><Avatar p={target} size={52} /><p className="rt-display text-2xl font-extrabold leading-tight">Find out {m.target}'s {m.topicLabel}.</p></div>
       {m.reason && <p className="text-[var(--muted)]">{m.reason}</p>}
       <p className="rounded-2xl bg-[var(--bg)] p-3 text-sm"><b>Smooth move:</b> {m.hint} Don't make it obvious.</p>
-      <p className="rounded-2xl bg-[var(--gold)]/25 p-3 text-sm"><b>While you do it:</b> they showed up for {target.hook}. Get the answer, then ask why it matters. That is the connection, and why you meet again.</p>
     </div>
   );
 }
@@ -954,7 +950,7 @@ function MissionBriefing({ game, personas, onReady }) {
   const [shown, setShown] = useState(false);
   return (
     <TableShell title="Secret missions 🕵️">
-      <p className="text-white/85 text-lg">This is not a points game. Find one true thing, then ask why it matters. Before you leave, you reveal together, and you leave with a reason to meet again.</p>
+      <p className="text-white/85 text-lg">Find one true thing, then ask why it matters.</p>
       {!shown ? (
         <button onClick={() => setShown(true)} className="rounded-3xl bg-[var(--gold)] text-[var(--on-gold)] p-8 flex flex-col items-center gap-2 cursor-pointer active:scale-[.98] transition">
           <span className="text-6xl">✉️</span>
@@ -964,7 +960,7 @@ function MissionBriefing({ game, personas, onReady }) {
       ) : (
         <>
           <MissionCard m={game.missions[0]} personas={personas} />
-          <p className="text-white/75">{personas.map((p) => p.name).join(", ")} got missions too. One of them is about you. 👀</p>
+          <p className="text-white/75">Keep it to yourself until you ask.</p>
           <Btn onClick={onReady}>Got it, hide my mission</Btn>
         </>
       )}
@@ -1051,7 +1047,7 @@ function MissionReveal({ game, personas, typed, onDone, solo }) {
     return (
       <TableShell title={all ? "Perfect sync 🔥" : `${cracked}/${total} missions cracked`}>
         <p className="text-white/85 text-lg">{all ? "Every mission cracked. You were clearly paying attention." : "Wrong answers just meant better stories. Nobody gets left behind."}</p>
-        <div className="rounded-3xl bg-[var(--gold)] text-[var(--on-gold)] p-5 rt-pop"><p className="rt-display text-2xl font-extrabold">The score was never the point</p><p className="mt-1">What you asked, and what you didn't say, is what meeting 2 opens.</p></div>
+        <div className="rounded-3xl bg-[var(--gold)] text-[var(--on-gold)] p-5 rt-pop"><p className="rt-display text-2xl font-extrabold">Meeting 2 opens what you asked.</p></div>
         <CrewList results={results} personas={personas} dark />
         <Btn onClick={() => onDone(results)}>Wrap up meeting 1 →</Btn>
       </TableShell>
@@ -1076,7 +1072,7 @@ function MissionReveal({ game, personas, typed, onDone, solo }) {
         {!verdict && (
           <>
             <p className="text-lg mt-1">{m.target === "You" ? "Is that right? You decide." : `${m.target}, is that right?`}</p>
-            {m.target !== "You" && <p className="text-xs text-[var(--muted)] -mt-2">Demo: tap for {m.target}.</p>}
+            {m.target !== "You" && !solo && <p className="text-xs text-[var(--muted)] -mt-2">Demo: tap for {m.target}.</p>}
             <div className="grid grid-cols-2 gap-3">
               <button onClick={() => setVerdict("right")} className="min-h-[56px] rounded-2xl bg-[var(--ok-bg)] text-[var(--ok)] font-bold text-lg cursor-pointer border-2 border-transparent hover:border-[var(--ok)]">✅ Right</button>
               <button onClick={() => setVerdict("wrong")} className="min-h-[56px] rounded-2xl bg-[var(--coral)]/15 text-[var(--coral)] font-bold text-lg cursor-pointer border-2 border-transparent hover:border-[var(--coral)]">❌ Wrong</button>
@@ -1098,8 +1094,8 @@ function MissionReveal({ game, personas, typed, onDone, solo }) {
               </>
             ) : (
               <p className="rounded-2xl bg-[var(--bg)] p-3">{asked === "fair"
-                ? "They took it. Now ask why it matters. That sentence is what you meet again about."
-                : "Good. Ask the kinder one, then why it matters. The score is not the point."}</p>
+                ? "Ask why it matters."
+                : "Ask the kinder question."}</p>
             )}
           </div>
         )}
@@ -1178,7 +1174,7 @@ function Meeting1({ game, personas, update, next, live, state, session }) {
       <div className="flex flex-col gap-5 text-center items-center rt-pop">
         <div className="text-7xl">☕🕵️</div>
         <Title dark big>Welcome to meeting 1.</Title>
-        <p className="text-white/80 text-lg max-w-[40ch]">{live ? "The opening lines are written for this activity and the people at the table. Then one secret mission: get a true answer, and ask why it matters." : "Start with two truths and a lie. Then one secret mission: get a true answer, and ask why it matters. That is the connection."}</p>
+        <p className="text-white/80 text-lg max-w-[40ch]">{live ? "One game for this table, then one secret mission." : "Two truths and a lie, then one secret mission."}</p>
         <Btn onClick={() => setStep(live ? "ice" : "opening")}>{live ? "Make our icebreaker" : "Start the opening game"}</Btn>
       </div>
     </TableShell>
@@ -1283,7 +1279,7 @@ function AfterMeeting1({ game, personas, state, update, next, live }) {
   const chosen = live ? state.vote : (state.vote === null ? null : tally[0] === tally[1] ? state.vote : tally[0] > tally[1] ? 0 : 1);
   const act = chosen === null ? null : game.activities[chosen];
   const message = act && state.slot
-    ? `Hey ${game.groupName} 👋\nMeetup #2 picks up Thursday's conversation: ${act.title} ${act.emoji}\n📍 ${act.place}\n🗓️ ${state.slot}\nWho's in? Reply 🙋`
+    ? `Hey ${game.groupName} 👋\nMeetup #2 picks up last time: ${act.title} ${act.emoji}\n📍 ${act.place}\n🗓️ ${state.slot}\nWho's in? Reply 🙋`
     : "";
   const msgRef = useRef(null);
   const copy = () => {
@@ -1450,7 +1446,7 @@ function ChatReady({ game, personas, live, code }) {
       <div className="flex flex-col gap-5 rt-pop">
         <div className="text-7xl text-center">🍓</div>
         <Title big>Check-in saved.</Title>
-        <p className="text-lg text-[var(--muted)]">It's in the Strawberry sheet, on the Checkins tab. This table keeps the same link.</p>
+        <p className="text-lg text-[var(--muted)]">This table keeps the same link.</p>
         <div className={`${CARD} p-4 flex flex-col gap-3`}>
           <div className="flex -space-x-2">{people.map((p) => <Avatar key={p.name} p={p} size={40} />)}</div>
           <p className="text-xs font-bold uppercase tracking-widest text-[var(--muted)]">Table link</p>
@@ -1939,6 +1935,7 @@ function App() {
           answers: s.answers || data.you.answers,
           home: s.home || data.you.home,
           standing: s.standing || data.you.standing,
+          from: data.you.from || s.from || "",
           intro: s.intro || data.you.intro || "",
           capsule: s.capsule || data.you.capsule || "",
           wish: s.wish || data.you.wish || "",
@@ -1983,7 +1980,7 @@ function App() {
     try { history.replaceState(null, "", url); } catch {}
     setState((s) => ({
       ...s, live: true, stage: "reveal", view: "app", run: s.run + 1,
-      answers: body.answers, home: body.home, standing: body.standing, hook: data.room.activity,
+      answers: body.answers, home: body.home, standing: body.standing, from: body.from || "", hook: data.room.activity,
       code: data.room.code, activity: data.room.activity, when: data.room.when, place: data.room.place,
       people: data.people || [], m1: {}, vote: null, slot: null, poked: false, intro: "", capsule: "", wish: "", bye: "",
     }));
