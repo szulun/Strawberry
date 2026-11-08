@@ -12,14 +12,18 @@
  */
 
 var TABS = {
-  Rooms: ["room_id", "code", "activity", "when_text", "place", "created_at", "host_person_id", "icebreakers", "when_at", "status", "meet2_activity", "meet2_place", "meet2_at", "meet3_activity", "meet3_place", "meet3_at", "reminded", "meet2_fixed", "meet3_fixed"],
+  Rooms: ["room_id", "code", "activity", "when_text", "place", "created_at", "host_person_id", "icebreakers", "when_at", "status", "meet2_activity", "meet2_place", "meet2_at", "meet3_activity", "meet3_place", "meet3_at", "reminded", "meet2_fixed", "meet3_fixed", "m1_started", "m2_started"],
   People: ["room_id", "person_id", "joined_at", "name", "email", "from_place", "standing", "hook", "home", "secret", "answers_json", "intro", "capsule", "wish", "vote", "slot", "bye", "contact", "guess_target", "guess_topic", "guess_text", "guess_verdict", "left", "next_activity", "meet3_at", "meet3_activity", "meet2_ok", "meet3_ok"],
   Tokens: ["room_id", "person_id", "token", "is_host"],
   Checkins: ["room_id", "person_id", "name", "again", "met", "reasons", "connected", "why", "group_name", "at"],
   Users: ["email", "name", "from_place", "standing", "home", "answers_json", "updated_at"],
   UserTokens: ["email", "token", "created_at"],
   Messages: ["room_id", "message_id", "person_id", "name", "text", "at"],
+  Finished: ["email", "room_id", "kind", "activity", "when_text", "at"],
 };
+// The team can host before anyone has finished three meetings.
+var FOUNDING_EMAILS = ["zoeyhuang1@gmail.com", "nicole.jkim@berkeley.edu", "matteo.bonche@berkeley.edu", "nicolas.carre@berkeley.edu"];
+var HOST_NEED = 3;
 
 var CARD_KEYS = {
   drink: ["coffee", "boba", "matcha", "smoothie"],
@@ -101,6 +105,7 @@ function route_(r) {
     case "judge": return lock_(function () { return judge_(r); });
     case "proposePlan": return lock_(function () { return proposePlan_(r); });
     case "answerPlan": return lock_(function () { return answerPlan_(r); });
+    case "startMeeting": return lock_(function () { return startMeeting_(r); });
     case "sendCode": return lock_(function () { return sendCode_(r); });
     case "verifyCode": return lock_(function () { return verifyCode_(r); });
     case "me": return me_(r);
@@ -119,6 +124,7 @@ function createRoom_(r) {
   var whenText = clip_(r.when, 60) || prettyWhen_(whenAt);
   var profile = profile_(r);
   requireUser_(r, profile.email);
+  if (!canHost_(profile.email)) throw new Error("Sit down at three meetings before you host.");
   upsertUser_(profile);
   var code = newCode_();
   var roomId = Utilities.getUuid();
@@ -195,6 +201,7 @@ function save_(r) {
   if (r.meet3_activity != null) patch.meet3_activity = clip_(r.meet3_activity, 40);
   if (!Object.keys(patch).length) throw new Error("Nothing to save.");
   setCells_("People", found.person._row, patch);
+  if (patch.capsule && String(patch.capsule).trim().length >= 2) markFinished_(found.person.email, found.room, "m1");
   var room = rows_("Rooms").filter(function (x) { return x.room_id === found.room.room_id; })[0];
   return pack_(room, found.person.person_id);
 }
@@ -427,7 +434,32 @@ function checkin_(r) {
   };
   if (existing) setCells_("Checkins", existing._row, row);
   else append_("Checkins", row);
+  markFinished_(found.person.email, found.room, "m2");
   return { saved: true };
+}
+
+function seatsFor_(email) {
+  return rows_("Finished").filter(function (x) { return x.email === normEmail_(email); });
+}
+
+function isFounding_(email) {
+  return FOUNDING_EMAILS.indexOf(normEmail_(email)) >= 0;
+}
+
+function canHost_(email) {
+  return isFounding_(email) || seatsFor_(email).length >= HOST_NEED;
+}
+
+function markFinished_(email, room, kind) {
+  email = normEmail_(email);
+  if (!email || !room || !room.room_id) return;
+  var exists = rows_("Finished").some(function (x) {
+    return x.email === email && x.room_id === room.room_id && x.kind === kind;
+  });
+  if (exists) return;
+  var activity = kind === "m2" ? (room.meet2_activity || room.activity) : room.activity;
+  var when = kind === "m2" ? (prettyWhen_(room.meet2_at) || room.when_text) : (room.when_text || prettyWhen_(room.when_at));
+  append_("Finished", { email: email, room_id: room.room_id, kind: kind, activity: activity || "", when_text: when || "", at: now_() });
 }
 
 function personRow_(roomId, personId, profile, activity, joined) {
@@ -496,7 +528,14 @@ function verifyCode_(r) {
 function me_(r) {
   var row = userByToken_(r.userToken);
   var user = rows_("Users").filter(function (u) { return u.email === row.email; })[0];
-  return { email: row.email, profile: user ? publicUser_(user) : null };
+  var seats = seatsFor_(row.email).sort(function (a, b) { return String(a.at).localeCompare(String(b.at)); });
+  return {
+    email: row.email,
+    profile: user ? publicUser_(user) : null,
+    founding: isFounding_(row.email),
+    canHost: canHost_(row.email),
+    seats: seats.map(function (s) { return { activity: s.activity, when: s.when_text, kind: s.kind, at: s.at }; }),
+  };
 }
 
 function userByToken_(token) {
@@ -603,6 +642,20 @@ function shareLine_(mine, people, email) {
   return "You showed up for the same activity.";
 }
 
+function startMeeting_(r) {
+  var found = find_(r.code, r.token);
+  if (found.room.status === "cancelled") throw new Error("This table was cancelled.");
+  var key = r.kind === "m2" ? "m2_started" : "m1_started";
+  if (key === "m2_started" && String(found.room.meet2_fixed) !== "1") throw new Error("Agree on a time first.");
+  if (String(found.room[key]) !== "1") {
+    var patch = {};
+    patch[key] = "1";
+    setCells_("Rooms", found.room._row, patch);
+  }
+  var room = rows_("Rooms").filter(function (x) { return x.room_id === found.room.room_id; })[0];
+  return pack_(room, found.person.person_id);
+}
+
 function planKind_(kind) {
   if (kind === "meet3") return { at: "meet3_at", activity: "meet3_activity", place: "meet3_place", fixed: "meet3_fixed", ok: "meet3_ok", remind: "m3" };
   return { at: "meet2_at", activity: "meet2_activity", place: "meet2_place", fixed: "meet2_fixed", ok: "meet2_ok", remind: "m2" };
@@ -640,28 +693,40 @@ function answerPlan_(r) {
   if (found.room.status === "cancelled") throw new Error("This table was cancelled.");
   var spec = planKind_(r.kind);
   if (!found.room[spec.at]) throw new Error("Someone still has to suggest a time.");
-  if (String(found.room[spec.fixed]) === "1") throw new Error("That time is already set.");
   var answer = r.answer === "yes" ? "yes" : r.answer === "no" ? "no" : "";
   if (!answer) throw new Error("Say if this time works.");
+  var wasFixed = String(found.room[spec.fixed]) === "1";
+  var wasYes = found.person[spec.ok] === "yes";
   var mark = {};
   mark[spec.ok] = answer;
   setCells_("People", found.person._row, mark);
+  found.person[spec.ok] = answer;
   settlePlan_(found.room.room_id, spec);
   var room = rows_("Rooms").filter(function (x) { return x.room_id === found.room.room_id; })[0];
+  if (answer === "yes" && !wasYes && wasFixed && room && String(room[spec.fixed]) === "1") mailPeople_(room, [found.person], spec.remind);
   return pack_(room, found.person.person_id);
 }
 
 function settlePlan_(roomId, spec) {
   var room = rows_("Rooms").filter(function (x) { return x.room_id === roomId; })[0];
   if (!room || !room[spec.at]) return;
-  var people = activePeople_(roomId);
-  var ready = people.length >= 2 && people.every(function (p) { return p[spec.ok] === "yes"; });
-  if (ready && String(room[spec.fixed]) !== "1") {
+  var coming = activePeople_(roomId).filter(function (p) { return p[spec.ok] === "yes"; });
+  var fixed = String(room[spec.fixed]) === "1";
+  if (coming.length >= 2 && !fixed) {
     var patch = {};
     patch[spec.fixed] = "1";
     setCells_("Rooms", room._row, patch);
     room[spec.fixed] = "1";
-    remind_(room, people, spec.remind);
+    remind_(room, coming, spec.remind);
+  } else if (coming.length < 2 && fixed) {
+    var soon = spec.remind === "m2" ? "soon2" : "soon3";
+    var reminded = String(room.reminded || "").split(",").filter(function (x) { return x && x !== spec.remind && x !== soon; }).join(",");
+    var clear = {};
+    clear[spec.fixed] = "";
+    clear.reminded = reminded;
+    setCells_("Rooms", room._row, clear);
+    room[spec.fixed] = "";
+    room.reminded = reminded;
   }
 }
 
@@ -669,9 +734,7 @@ function dropFlag_(room, flag) {
   return String(room.reminded || "").split(",").filter(function (x) { return x && x !== flag; }).join(",");
 }
 
-function remind_(room, people, kind) {
-  var already = String(room.reminded || "").split(",").filter(Boolean);
-  if (already.indexOf(kind) >= 0) return;
+function planNote_(room, kind) {
   var when = (kind === "m1" || kind === "soon1") ? (room.when_text || prettyWhen_(room.when_at))
     : (kind === "m2" || kind === "soon2") ? prettyWhen_(room.meet2_at)
     : prettyWhen_(room.meet3_at);
@@ -679,10 +742,21 @@ function remind_(room, people, kind) {
     : (kind === "m3" || kind === "soon3") ? (room.meet3_activity || room.activity)
     : room.activity;
   var body = "See you " + when + ".\n" + (what || "") + (room.place ? "\n" + room.place : "") + "\n\nOpen Strawberry at that time. This email is your reminder.";
+  return { when: when, body: body };
+}
+
+function mailPeople_(room, people, kind) {
+  var note = planNote_(room, kind);
   (people || []).forEach(function (p) {
     if (!p.email) return;
-    try { MailApp.sendEmail(p.email, "Strawberry: see you " + when, body); } catch (e) {}
+    try { MailApp.sendEmail(p.email, "Strawberry: see you " + note.when, note.body); } catch (e) {}
   });
+}
+
+function remind_(room, people, kind) {
+  var already = String(room.reminded || "").split(",").filter(Boolean);
+  if (already.indexOf(kind) >= 0) return;
+  mailPeople_(room, people, kind);
   already.push(kind);
   if (room._row) setCells_("Rooms", room._row, { reminded: already.join(",") });
   room.reminded = already.join(",");
@@ -713,12 +787,17 @@ function sendDueReminders() {
   rows_("Rooms").forEach(function (room) {
     if (room.status === "cancelled") return;
     var people = activePeople_(room.room_id);
-    [["soon1", room.when_at], ["soon2", room.meet2_at], ["soon3", room.meet3_at]].forEach(function (pair) {
+    [["soon1", room.when_at, ""], ["soon2", room.meet2_at, "meet2_fixed"], ["soon3", room.meet3_at, "meet3_fixed"]].forEach(function (pair) {
       if (!pair[1]) return;
+      if (pair[2] && String(room[pair[2]]) !== "1") return;
       var t = new Date(pair[1]).getTime();
       if (isNaN(t)) return;
       var delta = t - now;
-      if (delta > 0 && delta <= 90 * 60 * 1000) remind_(room, people, pair[0]);
+      if (delta <= 0 || delta > 90 * 60 * 1000) return;
+      var list = people;
+      if (pair[0] === "soon2") list = people.filter(function (p) { return p.meet2_ok === "yes"; });
+      if (pair[0] === "soon3") list = people.filter(function (p) { return p.meet3_ok === "yes"; });
+      remind_(room, list, pair[0]);
     });
   });
 }
@@ -790,6 +869,7 @@ function pack_(room, viewerId) {
       when_at: room.when_at || "", status: room.status || "",
       meet2_activity: room.meet2_activity || "", meet2_place: room.meet2_place || "", meet2_at: room.meet2_at || "", meet2_fixed: room.meet2_fixed || "",
       meet3_activity: room.meet3_activity || "", meet3_place: room.meet3_place || "", meet3_at: room.meet3_at || "", meet3_fixed: room.meet3_fixed || "",
+      m1_started: room.m1_started || "", m2_started: room.m2_started || "",
     },
     you: {
       person_id: viewer.person_id,
