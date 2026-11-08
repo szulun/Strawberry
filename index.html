@@ -1509,14 +1509,14 @@ function Meeting1({ game, personas, update, next, live, state, session, onPack }
   if (step === "answers") return <MissionAnswers game={game} personas={personas} solo={live} onDone={(t) => { setTyped(t); setStep("reveal"); }} />;
   if (step === "reveal" && live) return <LiveMission game={game} personas={personas} state={state} session={session} onPack={onPack} onDone={() => setStep("seal")} />;
   if (step === "reveal") return <MissionReveal game={game} personas={personas} typed={typed} solo={live} onDone={(r) => { update({ m1: { missionResults: r } }); setStep("seal"); }} />;
-  if (step === "seal") return <SealLine personas={personas} live={live} onDone={(line, bye) => { update({ capsule: line, bye: bye || "See you next time" }); setStep("end"); }} />;
+  if (step === "seal") return <SealLine personas={personas} live={live} onDone={(line) => { update({ capsule: line }); setStep("end"); }} />;
   return (
     <TableShell center>
       <div className="flex flex-col gap-5 text-center items-center rt-pop">
         <div className="text-7xl">🎬</div>
         <Title dark big>That's a wrap on meeting 1.</Title>
         <p className="text-white/80 text-lg max-w-[40ch]">The lines stay sealed. Meeting 2 is where they open.</p>
-        <p className="rt-display text-2xl font-extrabold">{(live ? [state.bye || "See you next time", ...personas.map((p) => p.bye || "See you next time")] : personas.map((p) => LEFTOVER[p.name].bye)).join(" · ")}</p>
+        {!live && <p className="rt-display text-2xl font-extrabold">{personas.map((p) => LEFTOVER[p.name].bye).join(" · ")}</p>}
         <Btn onClick={next}>{live ? "Plan meeting 2 →" : "Later that evening… →"}</Btn>
       </div>
     </TableShell>
@@ -1525,29 +1525,21 @@ function Meeting1({ game, personas, update, next, live, state, session, onPack }
 
 function SealLine({ personas, onDone, live }) {
   const [text, setText] = useState("");
-  const [bye, setBye] = useState("");
   const [error, setError] = useState("");
   const seal = (e) => {
     e.preventDefault();
     if (text.trim().length < 2) return setError("One sentence you didn't get to say.");
-    onDone(text.trim(), bye.trim());
+    onDone(text.trim());
   };
   return (
     <TableShell title="Leave one line sealed">
       <p className="text-white/85 text-lg">You each said one thing out loud. Write the line you didn't say. Nobody reads it until you're together again.</p>
       {live
         ? personas.map((p) => <p key={p.name} className="rounded-2xl bg-white/10 px-4 py-3">✉️ {p.name} {p.hasCapsule ? "sealed a line." : "hasn't sealed one yet."}</p>)
-        : personas.map((p) => <p key={p.name} className="rounded-2xl bg-white/10 px-4 py-3">✉️ {p.name} sealed a line. <span className="text-white/70">{LEFTOVER[p.name].bye}</span></p>)}
+        : personas.map((p) => <p key={p.name} className="rounded-2xl bg-white/10 px-4 py-3">✉️ {p.name} sealed a line.</p>)}
       <form onSubmit={seal} className="flex flex-col gap-3">
         <label htmlFor="capsule" className="font-semibold">Your sealed line</label>
         <textarea id="capsule" rows={2} maxLength={120} value={text} onChange={(e) => { setText(e.target.value); setError(""); }} placeholder="Next time, ask me about…" className="w-full rounded-2xl border-2 border-white/20 bg-white/10 p-3 text-lg text-white resize-none" />
-        {live && (
-          <>
-            <label htmlFor="bye" className="font-semibold">A short goodbye</label>
-            <p className="text-sm text-white/75">One line the group sees at the end of meeting 1. For example: See you Sunday. Or: À bientôt. Leave it blank and it becomes “See you next time.”</p>
-            <input id="bye" maxLength={40} value={bye} onChange={(e) => setBye(e.target.value)} placeholder="See you Sunday" className="w-full rounded-2xl border-2 border-white/20 bg-white/10 p-3 text-lg text-white" />
-          </>
-        )}
         {error && <p className="text-sm text-[var(--gold)]">{error}</p>}
         <Btn type="submit">Seal it until we meet again</Btn>
       </form>
