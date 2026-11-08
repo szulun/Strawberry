@@ -118,9 +118,78 @@ function peopleToPersonas(people) {
     color: p.color, answers: p.answers || {}, intro: p.intro || "", wish: p.wish || "",
     vote: p.vote === "" || p.vote == null ? null : Number(p.vote), slot: p.slot || "", bye: p.bye || "",
     hasCapsule: !!p.has_capsule, capsule: p.capsule || "", facts: null, person_id: p.person_id,
+    contact: p.contact || "", guessTarget: p.guess_target || "", guessTopic: p.guess_topic || "",
+    guessText: p.guess_text || "", guessVerdict: p.guess_verdict || "",
+    nextActivity: p.next_activity || "", meet3At: p.meet3_at || "", meet3Activity: p.meet3_activity || "",
+    meet2Ok: p.meet2_ok || "", meet3Ok: p.meet3_ok || "",
   }));
 }
-
+function formatWhen(iso, fallback) {
+  if (!iso) return fallback || "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return fallback || String(iso);
+  return d.toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+function timeReached(iso) {
+  if (!iso) return false;
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return false;
+  return Date.now() >= t;
+}
+function toLocalInput(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function applyPack(s, data) {
+  if (!data || !data.room) return s;
+  const you = data.you || {};
+  const room = data.room;
+  return {
+    ...s,
+    code: room.code || s.code,
+    activity: room.activity || s.activity,
+    when: room.when || s.when,
+    place: room.place || s.place,
+    whenAt: room.when_at != null ? room.when_at : (s.whenAt || ""),
+    roomStatus: room.status != null ? room.status : (s.roomStatus || ""),
+    meet2At: room.meet2_at != null ? room.meet2_at : (s.meet2At || ""),
+    meet2Activity: room.meet2_activity != null ? room.meet2_activity : (s.meet2Activity || ""),
+    meet2Place: room.meet2_place != null ? room.meet2_place : (s.meet2Place || ""),
+    meet2Fixed: room.meet2_fixed === "1",
+    meet2Ok: you.meet2_ok != null ? you.meet2_ok : (s.meet2Ok || ""),
+    meet3At: room.meet3_at != null ? room.meet3_at : (s.meet3At || ""),
+    meet3Activity: room.meet3_activity != null ? room.meet3_activity : (s.meet3Activity || ""),
+    meet3Place: room.meet3_place != null ? room.meet3_place : (s.meet3Place || ""),
+    meet3Fixed: room.meet3_fixed === "1",
+    meet3Ok: you.meet3_ok != null ? you.meet3_ok : (s.meet3Ok || ""),
+    people: data.people || s.people,
+    messages: Array.isArray(data.messages) ? data.messages : (s.messages || []),
+    youName: you.name || s.youName || "",
+    youId: you.person_id || s.youId || "",
+    isHost: you.is_host != null ? !!you.is_host : !!s.isHost,
+    from: you.from || s.from || "",
+    answers: s.answers || you.answers,
+    home: s.home || you.home,
+    standing: s.standing || you.standing,
+    hook: s.hook || room.activity,
+    intro: s.intro || you.intro || "",
+    capsule: s.capsule || you.capsule || "",
+    wish: s.wish || you.wish || "",
+    bye: s.bye || you.bye || "",
+    slot: s.slot || you.slot || "",
+    nextActivity: s.nextActivity || you.next_activity || "",
+    meet3Pick: s.meet3Pick || you.meet3_at || "",
+    meet3PickActivity: s.meet3PickActivity || you.meet3_activity || "",
+    contact: s.contact || you.contact || "",
+    guessText: s.guessText || you.guess_text || "",
+    guessTarget: s.guessTarget || you.guess_target || "",
+    guessTopic: s.guessTopic || you.guess_topic || "",
+    guessVerdict: you.guess_verdict || s.guessVerdict || "",
+  };
+}
 // 8 onboarding cards, 4 options each.
 // Every option belongs to one of the card's 2 "vibes" (fam "a" or "b").
 // Same option = same pick. Same vibe = softer overlap (used when no same pick).
@@ -306,12 +375,6 @@ const PREMEET_CHAT = [
   { from: "Jordan", text: "I'm in for the crawl. I can walk from campus." },
 ];
 const ACTIVITY_HOOKS = ["Boba crawl", "Cook together", "Karaoke", "Hike", "Escape room", "Picnic"];
-// Shown only from "Let Strawberry find your table". Not rooms. Nothing here can be joined.
-const EXAMPLE_TABLES = [
-  { emoji: "🧋", activity: "Boba crawl", when: "Thursday · 5:30 pm", place: "A café near Sproul", seats: "4 seats open", people: [["Lena", "Taipei"], ["Omar", "Cairo"]], share: "You and Lena both like spicy food." },
-  { emoji: "🧺", activity: "Picnic", when: "Saturday · 1:00 pm", place: "Memorial Glade", seats: "3 seats open", people: [["Hana", "Seoul"], ["Theo", "Lyon"]], share: "You showed up for the same activity." },
-  { emoji: "🎤", activity: "Karaoke", when: "Friday · 8:00 pm", place: "A room on Durant", seats: "2 seats open", people: [["Priya", "Mumbai"], ["Jonah", "Oakland"]], share: "You and Jonah both like old songs." },
-];
 // Round 2 answers do not live in this file. Paste a Google Form formResponse URL and the entry ids.
 // Leave CHECKIN_FORM empty during the demo; answers stay in this browser until the form is connected.
 const CHECKIN_FORM = "";
@@ -756,14 +819,108 @@ function OnboardingSteps({ onDone, cardsOnly, askSecret }) {
 // =====================================================================
 // STAGE 2 — GROUP REVEAL
 // =====================================================================
-function GroupReveal({ game, personas, state, next, live, plan }) {
-  const you = { ...YOU, standing: state.standing || "undergrad", hook: state.hook || (live ? state.activity : "a boba crawl"), from: state.from || "" };
+function TableTools({ state, session, onPack, onLeft }) {
+  const [open, setOpen] = useState(false);
+  const [activity, setActivity] = useState(state.activity || "");
+  const [place, setPlace] = useState(state.place || "");
+  const [whenAt, setWhenAt] = useState(toLocalInput(state.whenAt));
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [confirm, setConfirm] = useState(false);
+  if (!liveSession(session)) return null;
+  const save = async () => {
+    if (activity.trim().length < 2) return setError("Name the activity.");
+    if (place.trim().length < 2) return setError("Add where you meet.");
+    if (!whenAt) return setError("Add a date and time.");
+    const stamp = new Date(whenAt);
+    if (Number.isNaN(stamp.getTime()) || stamp.getTime() < Date.now() - 60 * 1000) return setError("Pick a time that has not already passed.");
+    setBusy(true); setError("");
+    try {
+      const data = await api("updateRoom", {
+        code: session.code, token: session.token, activity: activity.trim(), place: place.trim(),
+        whenAt: stamp.toISOString(), when: formatWhen(stamp.toISOString()),
+      });
+      onPack(data);
+      setOpen(false);
+    } catch (e) { setError(e.message || "Could not save."); }
+    setBusy(false);
+  };
+  const cancel = async () => {
+    setBusy(true); setError("");
+    try { onPack(await api("cancelRoom", { code: session.code, token: session.token })); }
+    catch (e) { setError(e.message || "Could not cancel."); }
+    setBusy(false);
+  };
+  const leave = async () => {
+    setBusy(true); setError("");
+    try { await api("leaveRoom", { code: session.code, token: session.token }); onLeft(); }
+    catch (e) { setError(e.message || "Could not leave."); setBusy(false); }
+  };
+  return (
+    <div className="flex flex-col gap-3">
+      {state.isHost ? (
+        <>
+          <Btn ghost onClick={() => setOpen(!open)}>{open ? "Close" : "Edit time or place"}</Btn>
+          {open && (
+            <div className={`${CARD} p-4 flex flex-col gap-3`}>
+              <Field id="edit-activity" label="Activity" value={activity} set={setActivity} placeholder="Boba crawl" />
+              <label className="flex flex-col gap-1 font-semibold">When
+                <input type="datetime-local" value={whenAt} onChange={(e) => { setWhenAt(e.target.value); setError(""); }} className="w-full rounded-2xl border-2 border-[var(--line)] bg-[var(--bg)] p-3 text-lg font-normal text-[var(--ink)]" />
+              </label>
+              <Field id="edit-place" label="Where" value={place} set={setPlace} placeholder="A café near Sproul" maxLength={80} />
+              <Btn onClick={save}>{busy ? "Saving…" : "Save changes"}</Btn>
+            </div>
+          )}
+          <Btn ghost onClick={() => (confirm ? cancel() : setConfirm(true))}>{confirm ? "Cancel this table for everyone" : "Cancel table"}</Btn>
+        </>
+      ) : <Btn ghost onClick={leave}>{busy ? "Leaving…" : "Leave this table"}</Btn>}
+      {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
+    </div>
+  );
+}
+function liveSession(session) { return session && session.code && session.token; }
+
+function GroupReveal({ game, personas, state, next, live, plan, session, onPack, onLeft }) {
+  const you = { ...YOU, name: live ? (state.youName || "You") : "You", standing: state.standing || "undergrad", hook: state.hook || (live ? state.activity : "a boba crawl"), from: state.from || "" };
   const people = [you, ...personas];
   const activity = live ? activityOf(state.activity, state.place) : game.activities[0];
   const when = plan?.when || ROUNDS.meetup1.when;
   const place = plan?.place || ROUNDS.meetup1.place;
   const link = live && state.code ? `${location.origin}${location.pathname}?room=${state.code}` : "";
   const [copied, setCopied] = useState(false);
+  const shareBlock = (
+    <div className={`${CARD} p-4 flex flex-col items-center gap-3 text-center`}>
+      <p className="text-xs font-bold uppercase tracking-widest text-[var(--muted)]">Scan to join this table</p>
+      <RoomQr url={link} />
+      <p className="rt-display text-4xl font-extrabold tracking-[0.18em]">{state.code}</p>
+      <p className="text-sm text-[var(--muted)]">Scan the code, type these four letters, or send the link.</p>
+      <p className="font-semibold break-all text-sm">{link}</p>
+      <Btn ghost onClick={() => { navigator.clipboard.writeText(link).then(() => setCopied(true)).catch(() => setCopied(false)); }}>Copy link</Btn>
+      {copied && <p className="text-sm text-[var(--ok)] font-semibold">Copied. Send it to the people coming.</p>}
+    </div>
+  );
+  if (live && state.roomStatus === "cancelled") return (
+    <Screen>
+      <Title>This table was cancelled.</Title>
+      <p className="text-lg text-[var(--muted)]">The code {state.code} does not open a seat anymore.</p>
+      <Btn onClick={onLeft}>Back to tables</Btn>
+    </Screen>
+  );
+  if (live && !personas.length) return (
+    <Screen>
+      <Chip>CODE {state.code}</Chip>
+      <Title>Your table is open.</Title>
+      <p className="text-lg text-[var(--muted)]">Share the code. The group name and what you have in common show up after a second person sits down.</p>
+      <div className="rounded-3xl bg-[var(--coral)] text-white p-5">
+        <p className="text-xs font-bold uppercase tracking-widest text-white/80">The hook</p>
+        <p className="rt-display text-3xl font-extrabold mt-1">{activity.emoji} {activity.title}</p>
+        <p className="mt-1 text-white/90">{place}</p>
+        <p className="mt-1 text-white/90">{formatWhen(state.whenAt, when)}</p>
+      </div>
+      {shareBlock}
+      <TableTools state={state} session={session} onPack={onPack} onLeft={onLeft} />
+    </Screen>
+  );
   return (
     <Screen>
       <div className="flex items-center gap-2"><Chip>{live && ALLOW_GMAIL ? "Email verified" : "Verified Berkeley students"}</Chip>{live ? <span className="text-xs font-bold tracking-widest text-[var(--muted)]">CODE {state.code}</span> : <span className="text-xs text-[var(--muted)]">demo group</span>}</div>
@@ -813,23 +970,81 @@ function GroupReveal({ game, personas, state, next, live, plan }) {
         <p className="text-sm text-[var(--muted)]">👕 {ROUNDS.meetup1.wear}</p>
         <p className="text-sm text-[var(--muted)] mt-2 italic">{live ? "Same activity, same table." : ROUNDS.meetup1.why}</p>
       </div>
-      {live && (
-        <div className={`${CARD} p-4 flex flex-col items-center gap-3 text-center`}>
-          <p className="text-xs font-bold uppercase tracking-widest text-[var(--muted)]">Scan to join this table</p>
-          <RoomQr url={link} />
-          <p className="rt-display text-4xl font-extrabold tracking-[0.18em]">{state.code}</p>
-          <p className="text-sm text-[var(--muted)]">Scan the code, type these four letters, or send the link.</p>
-          <p className="font-semibold break-all text-sm">{link}</p>
-          <Btn ghost onClick={() => { navigator.clipboard.writeText(link).then(() => setCopied(true)).catch(() => setCopied(false)); }}>Copy link</Btn>
-          {copied && <p className="text-sm text-[var(--ok)] font-semibold">Copied. Send it to the people coming.</p>}
-        </div>
-      )}
+      {live && shareBlock}
+      {live && <TableTools state={state} session={session} onPack={onPack} onLeft={onLeft} />}
       <Btn onClick={() => { if (personas.length) next(); }} className={personas.length ? "" : "opacity-50"}>{personas.length ? "Say hi in the group chat →" : "Waiting for someone to join"}</Btn>
     </Screen>
   );
 }
 
-function CrewChat({ game, personas, next, live, plan, intro, onIntro }) {
+function LiveChat({ game, personas, next, plan, state, session, onPack }) {
+  const [text, setText] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const you = { name: state.youName || "You", color: "#FDB515", isYou: true };
+  const messages = state.messages || [];
+  const when = formatWhen(state.whenAt, plan?.when || "");
+  const open = !state.whenAt || timeReached(state.whenAt);
+  const saidHi = messages.some((m) => m.person_id === state.youId);
+  const send = async (e) => {
+    e.preventDefault();
+    const line = text.trim();
+    if (!line) return setError("Write a message first.");
+    if (!liveSession(session)) return setError("Join the table again, then send it.");
+    setBusy(true); setError("");
+    try {
+      onPack(await api("postMessage", { code: session.code, token: session.token, text: line }));
+      setText("");
+    } catch (err) { setError(err.message || "Could not send."); }
+    setBusy(false);
+  };
+  return (
+    <Screen>
+      <Chip>Before you meet</Chip>
+      <Title>{personas.length ? game.groupName : "Your table"}</Title>
+      <p className="text-[var(--muted)]">Say hi, then reply whenever you want. The plan stays pinned.</p>
+      <div className="rounded-2xl bg-[var(--blue)] text-white p-4">
+        <p className="text-xs font-bold uppercase tracking-widest text-[var(--gold)]">Pinned plan</p>
+        <p className="font-semibold mt-1">{when}</p>
+        <p className="text-sm text-white/85">{plan?.place || state.place}</p>
+      </div>
+      <div className={`${CARD} p-4 flex flex-col gap-3`}>
+        {messages.map((m, i) => {
+          const mine = m.person_id === state.youId;
+          const person = mine ? you : (personas.find((p) => p.person_id === m.person_id) || { name: m.name, color: "#52645A" });
+          return (
+            <div key={`${m.at}-${i}`} className={`flex items-end gap-2 ${mine ? "justify-end" : ""}`}>
+              {!mine && <Avatar p={person} size={30} />}
+              <div className={`rounded-2xl px-3 py-2 max-w-[80%] ${mine ? "rounded-br-sm bg-[var(--chat)] text-[var(--chat-ink)]" : "rounded-bl-sm bg-[var(--bg)]"}`}>
+                <p className={`text-xs font-bold ${mine ? "opacity-70" : "text-[var(--muted)]"}`}>{person.name}</p>
+                <p>{m.text}</p>
+              </div>
+              {mine && <Avatar p={person} size={30} />}
+            </div>
+          );
+        })}
+        {!messages.length && <p className="text-sm text-[var(--muted)]">Nobody has said hi yet. You go first.</p>}
+      </div>
+      <form onSubmit={send} className="flex flex-col gap-3">
+        <label htmlFor="chat-line" className="font-semibold">Message the table</label>
+        <textarea id="chat-line" rows={2} maxLength={200} value={text} onChange={(e) => { setText(e.target.value); setError(""); }} placeholder="Name, what you study, one thing you're into" className="w-full rounded-2xl border-2 border-[var(--line)] bg-[var(--surface)] p-3 text-lg text-[var(--ink)] resize-none" />
+        <Btn type="submit">{busy ? "Sending…" : "Send"}</Btn>
+      </form>
+      {error && <p className="text-sm text-[var(--danger)] -mt-2">{error}</p>}
+      {open ? (
+        <Btn ghost onClick={() => (saidHi ? next() : setError("Say hi first."))}>Start meeting 1 →</Btn>
+      ) : (
+        <div className={`${CARD} p-4`}>
+          <p className="rt-display text-xl font-extrabold">See you {when}.</p>
+          <p className="text-sm text-[var(--muted)] mt-1">Meeting 1 opens then. A reminder is in your email.</p>
+        </div>
+      )}
+    </Screen>
+  );
+}
+
+function CrewChat({ game, personas, next, live, plan, intro, onIntro, state, session, onPack }) {
+  if (live) return <LiveChat game={game} personas={personas} next={next} plan={plan} state={state} session={session} onPack={onPack} />;
   const [text, setText] = useState("");
   const [mine, setMine] = useState(intro || "");
   const [error, setError] = useState("");
@@ -1031,7 +1246,7 @@ function MissionAnswers({ game, personas, onDone, solo }) {
   };
   return (
     <TableShell title="Answer time ✍️">
-      <p className="text-white/70 text-sm font-semibold">Pass the phone · {i + 1}/{missions.length}</p>
+      {solo ? <p className="text-white/70 text-sm font-semibold">On your phone</p> : <p className="text-white/70 text-sm font-semibold">Pass the phone · {i + 1}/{missions.length}</p>}
       <div key={i} className="rounded-3xl bg-[var(--surface)] text-[var(--ink)] p-5 flex flex-col gap-4 rt-pop">
         <div className="flex items-center gap-3"><Avatar p={person} size={52} /><p className="rt-display text-2xl font-extrabold">{m.guesser === "You" ? "Your turn" : `${m.guesser}'s turn`}</p></div>
         {m.guesser === "You" ? (
@@ -1111,7 +1326,6 @@ function MissionReveal({ game, personas, typed, onDone, solo }) {
             {!asked ? (
               <>
                 <p className="text-lg">Ask one question about where {m.target === "You" ? "you're" : `${m.target} is`} from. They decide if it's fair.</p>
-                <p className="text-sm text-[var(--muted)]">No politics, no religion, no stereotypes. A kinder question still counts.</p>
                 <div className="grid grid-cols-2 gap-3">
                   <button onClick={() => setAsked("fair")} className="min-h-[56px] rounded-2xl bg-[var(--ok-bg)] text-[var(--ok)] font-bold cursor-pointer">Fair question</button>
                   <button onClick={() => setAsked("kinder")} className="min-h-[56px] rounded-2xl bg-[var(--gold)]/30 font-bold cursor-pointer">Try a kinder one</button>
@@ -1185,7 +1399,82 @@ function TableIcebreaker({ game, personas, state, session, onDone }) {
   );
 }
 
-function Meeting1({ game, personas, update, next, live, state, session }) {
+function nameById(id, state, personas) {
+  if (id === state.youId) return state.youName || "you";
+  return (personas.find((p) => p.person_id === id) || {}).name || "someone";
+}
+
+function LiveMission({ game, personas, state, session, onPack, onDone }) {
+  const mission = (game.missions || []).find((m) => m.guesser === "You");
+  const [text, setText] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  if (!mission) return (
+    <TableShell center>
+      <Title dark big>Wait for your table.</Title>
+      <p className="text-white/80 text-lg">Someone still has to join before the mission can start.</p>
+    </TableShell>
+  );
+  const target = personas.find((p) => p.name === mission.target);
+  const saveGuess = async (e) => {
+    e.preventDefault();
+    if (!text.trim()) return setError("Type what you found out. A guess is fine.");
+    if (!target || !target.person_id) return setError("Wait for them to join, then try again.");
+    setBusy(true); setError("");
+    try {
+      const data = await api("save", {
+        code: session.code, token: session.token,
+        guess_text: text.trim(), guess_target: target.person_id, guess_topic: mission.topicLabel,
+      });
+      onPack(data);
+    } catch (err) { setError(err.message || "Could not save."); }
+    setBusy(false);
+  };
+  const judge = async (personId, verdict) => {
+    setError("");
+    try { onPack(await api("judge", { code: session.code, token: session.token, guesserId: personId, verdict })); }
+    catch (err) { setError(err.message || "Could not save that."); }
+  };
+  const incoming = personas.filter((p) => p.guessTarget === state.youId && p.guessText);
+  const lines = [
+    ...(state.guessText ? [{ key: "you", name: state.youName || "You", about: mission.target, topic: state.guessTopic || mission.topicLabel, text: state.guessText, verdict: state.guessVerdict }] : []),
+    ...personas.filter((p) => p.guessText).map((p) => ({ key: p.person_id, name: p.name, about: nameById(p.guessTarget, state, personas), topic: p.guessTopic, text: p.guessText, verdict: p.guessVerdict })),
+  ];
+  return (
+    <TableShell title="What you found out">
+      <p className="text-white/80">Each phone keeps its own answer. You can see the others here once they send theirs.</p>
+      {!state.guessText ? (
+        <form onSubmit={saveGuess} className="rounded-3xl bg-[var(--surface)] text-[var(--ink)] p-5 flex flex-col gap-3">
+          <label htmlFor="mission-answer" className="text-lg">What's <b>{mission.target}'s {mission.topicLabel}</b>?</label>
+          <textarea id="mission-answer" rows={2} maxLength={80} value={text} onChange={(e) => { setText(e.target.value); setError(""); }} placeholder="A guess is fine" className="w-full rounded-2xl border-2 border-[var(--line)] bg-[var(--bg)] p-3 text-lg text-[var(--ink)] resize-none" />
+          <Btn type="submit">{busy ? "Saving…" : "Send my answer"}</Btn>
+        </form>
+      ) : (
+        <p className="rounded-2xl bg-white/10 p-4">You wrote “{state.guessText}” about {mission.target}. {state.guessVerdict === "right" ? "They said that's right." : state.guessVerdict === "wrong" ? "They said that's not quite it. Ask why it matters." : "Waiting for them to say if it's right."}</p>
+      )}
+      {incoming.map((p) => (
+        <div key={p.person_id} className="rounded-3xl bg-[var(--surface)] text-[var(--ink)] p-5 flex flex-col gap-3">
+          <p className="text-lg"><b>{p.name}</b> thinks your {p.guessTopic || "answer"} is “{p.guessText}”.</p>
+          {p.guessVerdict ? <p className="font-semibold">{p.guessVerdict === "right" ? "You said that's right." : "You said that's not quite it."}</p> : (
+            <div className="grid grid-cols-2 gap-3">
+              <button onClick={() => judge(p.person_id, "right")} className="min-h-[56px] rounded-2xl bg-[var(--ok-bg)] text-[var(--ok)] font-bold cursor-pointer">Right</button>
+              <button onClick={() => judge(p.person_id, "wrong")} className="min-h-[56px] rounded-2xl bg-[var(--coral)]/15 text-[var(--coral)] font-bold cursor-pointer">Not quite</button>
+            </div>
+          )}
+        </div>
+      ))}
+      {lines.length > 0 && (
+        <div className="flex flex-col gap-2">
+          {lines.map((l) => <p key={l.key} className="rounded-2xl bg-white/10 p-3 text-sm"><b>{l.name}</b> on {l.about}'s {l.topic}: “{l.text}” {l.verdict === "right" ? "✅" : l.verdict === "wrong" ? "❌" : "· waiting"}</p>)}
+        </div>
+      )}
+      {error && <p className="text-sm text-[var(--gold)]">{error}</p>}
+      {state.guessText && <Btn onClick={() => onDone([])}>Wrap up meeting 1 →</Btn>}
+    </TableShell>
+  );
+}
+
+function Meeting1({ game, personas, update, next, live, state, session, onPack }) {
   const [step, setStep] = useState("intro");
   const [typed, setTyped] = useState({});
   if (!game.missions.length) return (
@@ -1216,8 +1505,9 @@ function Meeting1({ game, personas, update, next, live, state, session }) {
     );
   }
   if (step === "brief") return <MissionBriefing game={game} personas={personas} onReady={() => setStep("live")} />;
-  if (step === "live") return <MissionInProgress game={game} personas={personas} onEnd={() => setStep("answers")} />;
+  if (step === "live") return <MissionInProgress game={game} personas={personas} onEnd={() => setStep(live ? "reveal" : "answers")} />;
   if (step === "answers") return <MissionAnswers game={game} personas={personas} solo={live} onDone={(t) => { setTyped(t); setStep("reveal"); }} />;
+  if (step === "reveal" && live) return <LiveMission game={game} personas={personas} state={state} session={session} onPack={onPack} onDone={() => setStep("seal")} />;
   if (step === "reveal") return <MissionReveal game={game} personas={personas} typed={typed} solo={live} onDone={(r) => { update({ m1: { missionResults: r } }); setStep("seal"); }} />;
   if (step === "seal") return <SealLine personas={personas} live={live} onDone={(line, bye) => { update({ capsule: line, bye: bye || "See you next time" }); setStep("end"); }} />;
   return (
@@ -1226,8 +1516,8 @@ function Meeting1({ game, personas, update, next, live, state, session }) {
         <div className="text-7xl">🎬</div>
         <Title dark big>That's a wrap on meeting 1.</Title>
         <p className="text-white/80 text-lg max-w-[40ch]">The lines stay sealed. Meeting 2 is where they open.</p>
-        <p className="rt-display text-2xl font-extrabold">{(live ? personas.map((p) => p.bye || "See you next time") : personas.map((p) => LEFTOVER[p.name].bye)).join(" · ")}</p>
-        <Btn onClick={next}>Later that evening… →</Btn>
+        <p className="rt-display text-2xl font-extrabold">{(live ? [state.bye || "See you next time", ...personas.map((p) => p.bye || "See you next time")] : personas.map((p) => LEFTOVER[p.name].bye)).join(" · ")}</p>
+        <Btn onClick={next}>{live ? "Plan meeting 2 →" : "Later that evening… →"}</Btn>
       </div>
     </TableShell>
   );
@@ -1253,8 +1543,9 @@ function SealLine({ personas, onDone, live }) {
         <textarea id="capsule" rows={2} maxLength={120} value={text} onChange={(e) => { setText(e.target.value); setError(""); }} placeholder="Next time, ask me about…" className="w-full rounded-2xl border-2 border-white/20 bg-white/10 p-3 text-lg text-white resize-none" />
         {live && (
           <>
-            <label htmlFor="bye" className="font-semibold">How you say see you next time</label>
-            <input id="bye" maxLength={40} value={bye} onChange={(e) => setBye(e.target.value)} placeholder="See you next time" className="w-full rounded-2xl border-2 border-white/20 bg-white/10 p-3 text-lg text-white" />
+            <label htmlFor="bye" className="font-semibold">A short goodbye</label>
+            <p className="text-sm text-white/75">One line the group sees at the end of meeting 1. For example: See you Sunday. Or: À bientôt. Leave it blank and it becomes “See you next time.”</p>
+            <input id="bye" maxLength={40} value={bye} onChange={(e) => setBye(e.target.value)} placeholder="See you Sunday" className="w-full rounded-2xl border-2 border-white/20 bg-white/10 p-3 text-lg text-white" />
           </>
         )}
         {error && <p className="text-sm text-[var(--gold)]">{error}</p>}
@@ -1266,26 +1557,108 @@ function SealLine({ personas, onDone, live }) {
 // =====================================================================
 // STAGE 4 — AFTER MEETING 1
 // =====================================================================
-function AfterMeeting1({ game, personas, state, update, next, live }) {
+function AgreeTime({ kind, state, personas, session, onPack }) {
+  const fixed = kind === "meet3" ? !!state.meet3Fixed : !!state.meet2Fixed;
+  const at = kind === "meet3" ? state.meet3At : state.meet2At;
+  const activity = kind === "meet3" ? state.meet3Activity : state.meet2Activity;
+  const youOk = kind === "meet3" ? state.meet3Ok : state.meet2Ok;
+  const rows = [
+    { id: state.youId || "you", name: state.youName || "You", ok: youOk || "" },
+    ...(personas || []).map((p) => ({ id: p.person_id, name: p.name, ok: (kind === "meet3" ? p.meet3Ok : p.meet2Ok) || "" })),
+  ];
+  const [open, setOpen] = useState(false);
+  const [act, setAct] = useState(activity || state.activity || "");
+  const [whenAt, setWhenAt] = useState(toLocalInput(at));
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const word = (ok) => ok === "yes" ? "In" : ok === "no" ? "Not this time" : "Hasn't answered";
+  const suggest = async () => {
+    if (!liveSession(session)) return setError("Join the table again, then suggest a time.");
+    if (act.trim().length < 2) return setError("Name the activity.");
+    if (!whenAt) return setError("Add a date and time.");
+    const stamp = new Date(whenAt);
+    if (Number.isNaN(stamp.getTime()) || stamp.getTime() < Date.now() - 60 * 1000) return setError("Pick a time that has not already passed.");
+    setBusy(true); setError("");
+    try {
+      onPack(await api("proposePlan", { code: session.code, token: session.token, kind, activity: act.trim(), whenAt: stamp.toISOString(), reopen: fixed }));
+      setOpen(false);
+    } catch (e) { setError(e.message || "Could not save that time."); }
+    setBusy(false);
+  };
+  const answer = async (value) => {
+    if (!liveSession(session)) return setError("Join the table again, then answer.");
+    setBusy(true); setError("");
+    try { onPack(await api("answerPlan", { code: session.code, token: session.token, kind, answer: value })); }
+    catch (e) { setError(e.message || "Could not save that."); }
+    setBusy(false);
+  };
+  return (
+    <section className="flex flex-col gap-3">
+      <h2 className="rt-display text-xl font-bold">{kind === "meet3" ? "Meeting 3" : "The next time you sit down"}</h2>
+      <p className="text-sm text-[var(--muted)]">Like setting up a game. One person suggests a time. Everyone else says if it works. When the whole table is in, that time stays.</p>
+      {at && (
+        <div className={`rounded-3xl p-4 ${fixed ? "bg-[var(--gold)] text-[var(--on-gold)]" : "bg-[var(--bg)]"}`}>
+          <p className="rt-display text-xl font-extrabold">{fixed ? "This time is set." : "Suggested time"}</p>
+          <p className="mt-1">{activity} · {formatWhen(at)}</p>
+          {fixed && <p className="mt-1 text-sm">A reminder is in your email. It does not open before then.</p>}
+        </div>
+      )}
+      {rows.map((p) => <p key={p.id || p.name} className="rounded-2xl bg-[var(--bg)] px-4 py-3"><b>{p.name}:</b> {at ? word(p.ok) : "No time yet."}</p>)}
+      {at && !fixed && (
+        <div className="grid grid-cols-2 gap-3">
+          <button type="button" onClick={() => answer("yes")} className={`min-h-[52px] rounded-2xl font-semibold border-2 cursor-pointer ${youOk === "yes" ? "bg-[var(--blue)] text-[var(--gold)] border-[var(--blue)]" : "bg-[var(--surface)] border-[var(--line)]"}`}>I'm in</button>
+          <button type="button" onClick={() => answer("no")} className={`min-h-[52px] rounded-2xl font-semibold border-2 cursor-pointer ${youOk === "no" ? "bg-[var(--coral)] text-white border-[var(--coral)]" : "bg-[var(--surface)] border-[var(--line)]"}`}>Not this time</button>
+        </div>
+      )}
+      {!fixed && !at && <p className="text-sm text-[var(--muted)]">Nothing is set until everyone is in.</p>}
+      {(open || !at) && (
+        <div className={`${CARD} p-4 flex flex-col gap-3`}>
+          <div className="flex flex-wrap gap-2">
+            {ACTIVITY_HOOKS.map((a) => (
+              <button key={a} type="button" onClick={() => setAct(a)} className={`min-h-[44px] rounded-full px-4 py-2 text-sm font-semibold border-2 cursor-pointer ${act === a ? "bg-[var(--coral)] text-white border-[var(--coral)]" : "bg-[var(--surface)] border-[var(--line)]"}`}>{a}</button>
+            ))}
+          </div>
+          <Field id={`${kind}-activity`} label="Activity" value={act} set={setAct} placeholder="Boba crawl" />
+          <label className="flex flex-col gap-1 font-semibold">Time
+            <input type="datetime-local" value={whenAt} onChange={(e) => { setWhenAt(e.target.value); setError(""); }} className="w-full rounded-2xl border-2 border-[var(--line)] bg-[var(--bg)] p-3 text-lg font-normal text-[var(--ink)]" />
+          </label>
+          <Btn onClick={suggest}>{busy ? "Saving…" : "Suggest this time"}</Btn>
+        </div>
+      )}
+      {at && !open && <button type="button" onClick={() => { setOpen(true); setAct(activity || ""); setWhenAt(toLocalInput(at)); }} className="self-start font-semibold text-[var(--blue)] cursor-pointer min-h-[44px]">{fixed ? "Change the time. Everyone says they're in again." : "Suggest a different time"}</button>}
+      {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
+    </section>
+  );
+}
+
+function LiveWait({ state, place, onNext, onBack }) {
+  const at = state.meet2At || "";
+  const open = !!(state.meet2Fixed && timeReached(at));
+  return (
+    <div className="flex-1 flex flex-col bg-[var(--table)] text-white">
+      <div className="flex-1 w-full max-w-[560px] mx-auto gutter pt-6 pb-28 flex flex-col gap-4">
+        <Chip dark>Before meeting 2</Chip>
+        <Title dark>{state.meet2Fixed && at ? `See you ${formatWhen(at)}.` : "Agree on a time first."}</Title>
+        <p className="text-white/80 text-lg">{state.meet2Fixed ? `${state.meet2Activity || ""} · ${place || state.place || ""}` : "One person suggests a time. It stays when everyone is in, like setting up a game."}</p>
+        {state.meet2Fixed && <p className="text-white/75">A reminder is in your email. This screen stays until that time.</p>}
+        {open ? <Btn onClick={onNext}>It's time. Open meeting 2</Btn> : <p className="text-sm text-white/70">{state.meet2Fixed ? "Come back at that time. The logo takes you to the table while you wait." : "Go back and finish agreeing."}</p>}
+        <Btn ghost dark onClick={onBack}>Back to the plan</Btn>
+      </div>
+    </div>
+  );
+}
+
+function AfterMeeting1({ game, personas, state, update, next, live, session, onPack }) {
   const [copied, setCopied] = useState("");
   const [error, setError] = useState("");
   if (live) {
-    const activity = activityOf(state.activity, state.place);
     return (
       <Screen>
         <Chip>After meeting 1</Chip>
-        <Title>Same activity, next time</Title>
-        <p className="text-[var(--muted)]">Meeting 2 continues this table. It does not start a new activity.</p>
-        <div className="rounded-3xl bg-[var(--coral)] text-white p-5">
-          <p className="text-xs font-bold uppercase tracking-widest text-white/80">The hook</p>
-          <p className="rt-display text-3xl font-extrabold mt-1">{activity.emoji} {activity.title}</p>
-          <p className="mt-1 text-white/90">{activity.place}</p>
-        </div>
-        <section className="flex flex-col gap-3">
-          <h2 className="rt-display text-xl font-bold">Lock a time</h2>
-          <div className="flex gap-2 flex-wrap">{ROUNDS.slots.map((s) => <button key={s} onClick={() => { update({ slot: s }); setError(""); }} className={`min-h-[44px] rounded-full px-4 py-2 font-semibold border-2 cursor-pointer ${state.slot === s ? "bg-[var(--blue)] text-[var(--gold)] border-[var(--blue)]" : "bg-[var(--surface)] border-[var(--line)]"}`}>{state.slot === s ? "🔒 " : ""}{s}</button>)}</div>
-        </section>
-        <Btn onClick={() => (state.slot ? next() : setError("Lock a time first."))}>See you then →</Btn>
+        <Title>Plan meeting 2</Title>
+        <p className="text-[var(--muted)]">Suggest one time. It is set when everyone says they're in.</p>
+        <AgreeTime kind="meet2" state={state} personas={personas} session={session} onPack={onPack} />
+        <Btn onClick={() => (state.meet2Fixed ? next() : setError("Wait until everyone is in."))}>{state.meet2Fixed ? "Wait for that time →" : "Waiting until this time is set"}</Btn>
         {error && <p className="text-sm text-[var(--danger)] -mt-3">{error}</p>}
       </Screen>
     );
@@ -1374,7 +1747,8 @@ function AfterMeeting1({ game, personas, state, update, next, live }) {
 // =====================================================================
 // STAGE 5 — BETWEEN MEETINGS
 // =====================================================================
-function BetweenMeetings({ game, personas, state, update, next, live }) {
+function BetweenMeetings({ game, personas, state, update, next, live, go }) {
+  if (live) return <LiveWait state={state} place={state.meet2Place || state.place} onNext={next} onBack={() => go("after1")} />;
   const act = game.activities[state.vote ?? 0];
   const slot = state.slot || ROUNDS.slots[0];
   const late = personas[1] || personas[0] || { name: "Someone", color: "#6A4BE8" };
@@ -1418,12 +1792,13 @@ function BetweenMeetings({ game, personas, state, update, next, live }) {
 // =====================================================================
 // STAGE 6 — MEETING 2 (just hang out, mini-games if needed) + CHECK-IN
 // =====================================================================
-function Meeting2({ game, personas, state, next, live }) {
+function Meeting2({ game, personas, state, next, live, go }) {
   const [opened, setOpened] = useState(false);
   const [box, setBox] = useState(false);
-  const act = live ? activityOf(state.activity, state.place) : game.activities[state.vote ?? 0];
+  if (live && !(state.meet2Fixed && timeReached(state.meet2At))) return <LiveWait state={state} place={state.meet2Place || state.place} onNext={next} onBack={() => go("after1")} />;
+  const act = live ? activityOf(state.meet2Activity || state.activity, state.meet2Place || state.place) : game.activities[state.vote ?? 0];
   const lines = live
-    ? [{ name: "You", text: state.capsule || "Next time, ask me what I didn't say." }, ...personas.map((p) => ({ name: p.name, text: p.capsule || (p.hasCapsule ? "Sealed. Open yours to read it." : "Hasn't sealed a line yet.") }))]
+    ? [{ name: state.youName || "You", text: state.capsule || "Next time, ask me what I didn't say." }, ...personas.map((p) => ({ name: p.name, text: p.capsule || (p.hasCapsule ? "Sealed. Open yours to read it." : "Hasn't sealed a line yet.") }))]
     : [{ name: "You", text: state.capsule || "Next time, ask me what I didn't say." }, ...personas.map((p) => ({ name: p.name, text: LEFTOVER[p.name].line }))];
   if (box) return <TableShell chip="📱 Meeting 2"><MiniGameBox onClose={() => setBox(false)} closeLabel="Back to the lines" /></TableShell>;
   if (!opened) return (
@@ -1446,6 +1821,7 @@ function Meeting2({ game, personas, state, next, live }) {
         <div className="text-7xl">{act.emoji}</div>
         <Title dark big>You're not strangers anymore.</Title>
         <p className="text-white/80 text-lg max-w-[40ch]">{act.title} is not a fresh start. Ask about what you learned last time, then let it go wherever it goes.</p>
+        {live && <p className="text-white/75 text-base max-w-[42ch]">When you leave this page, the next screen is a short check-in. After you send it, you can share Instagram or WhatsApp, host a new table, or pick a time for meeting 3.</p>}
         <Btn ghost dark onClick={() => setBox(true)}>🎲 Need a nudge? Open the mini-game box</Btn>
         <Btn onClick={next}>We're done, time to check in →</Btn>
       </div>
@@ -1462,24 +1838,32 @@ function YesNo({ value, onChange }) {
 }
 
 // After the check-in: a (fake) group chat is created for the crew. Not functional, just shows the idea.
-function ChatReady({ game, personas, live, code }) {
+function ChatReady({ game, personas, live, code, state, update, onLeft, session, onPack }) {
   const [open, setOpen] = useState(false);
-  const people = [YOU, ...personas];
+  const [contact, setContact] = useState(state?.contact || "");
+  const you = { ...YOU, name: state?.youName || "You" };
+  const people = [you, ...personas];
   const link = live && code ? `${location.origin}${location.pathname}?room=${code}` : `strawberry.app/chat/${slug(game.groupName)}`;
-  if (live) return (
-    <Screen center>
-      <div className="flex flex-col gap-5 rt-pop">
-        <div className="text-7xl text-center">🍓</div>
-        <Title big>Check-in saved.</Title>
-        <p className="text-lg text-[var(--muted)]">This table keeps the same link.</p>
+  if (live) {
+    return (
+      <Screen>
+        <div className="text-6xl">🍓</div>
+        <Title>Check-in saved.</Title>
+        <p className="text-lg text-[var(--muted)]">Three things you can do now: share a contact, host a new table, or plan meeting 3.</p>
         <div className={`${CARD} p-4 flex flex-col gap-3`}>
-          <div className="flex -space-x-2">{people.map((p) => <Avatar key={p.name} p={p} size={40} />)}</div>
-          <p className="text-xs font-bold uppercase tracking-widest text-[var(--muted)]">Table link</p>
-          <p className="font-semibold rounded-2xl bg-[var(--bg)] px-4 py-3 break-all">{link}</p>
+          <p className="font-semibold">Instagram or WhatsApp</p>
+          <p className="text-sm text-[var(--muted)]">Only people at this table can see it, and only after they check in too.</p>
+          <Field id="contact" label="Your contact" value={contact} set={setContact} placeholder="@you or a WhatsApp number" maxLength={80} />
+          <Btn ghost onClick={() => update({ contact: contact.trim() })}>Share it with this table</Btn>
+          {personas.filter((p) => p.contact).map((p) => <p key={p.person_id} className="rounded-2xl bg-[var(--bg)] px-4 py-3"><b>{p.name}:</b> {p.contact}</p>)}
+          {!personas.some((p) => p.contact) && <p className="text-sm text-[var(--muted)]">Nobody else has shared a contact yet.</p>}
         </div>
-      </div>
-    </Screen>
-  );
+        <AgreeTime kind="meet3" state={state} personas={personas} session={session} onPack={onPack} />
+        <Btn onClick={onLeft}>Host a new table</Btn>
+        <p className="text-sm text-[var(--muted)] break-all">This table's link stays {link}</p>
+      </Screen>
+    );
+  }
   if (open) return (
     <Screen>
       <button onClick={() => setOpen(false)} className="self-start font-semibold text-[var(--muted)] cursor-pointer min-h-[44px]">← Back</button>
@@ -1529,7 +1913,7 @@ function ChatReady({ game, personas, live, code }) {
   );
 }
 
-function CheckIn({ game, personas, live, code, sessionCode, token }) {
+function CheckIn({ game, personas, live, code, sessionCode, token, state, update, onLeft, session, onPack }) {
   const [again, setAgain] = useState(null);
   const [met, setMet] = useState(null);
   const [reasons, setReasons] = useState([]);
@@ -1565,7 +1949,7 @@ function CheckIn({ game, personas, live, code, sessionCode, token }) {
     }
     setSaved(true);
   };
-  if (saved) return <ChatReady game={game} personas={personas} live={live} code={code} />;
+  if (saved) return <ChatReady game={game} personas={personas} live={live} code={code} state={state} update={update} onLeft={onLeft} session={session} onPack={onPack} />;
   return (
     <Screen>
       <Chip>Check-in</Chip>
@@ -1719,13 +2103,40 @@ function Field({ id, label, value, set, placeholder, maxLength = 40 }) {
   );
 }
 
+const SAMPLE_TABLES = [
+  { emoji: "🧋", activity: "Boba crawl", when: "Thursday · 5:30 pm", place: "A café near Sproul", seats: "4 seats open", people: [["Lena", "Taipei"], ["Omar", "Cairo"]], share: "You and Lena both like boba." },
+  { emoji: "🧺", activity: "Picnic", when: "Saturday · 1:00 pm", place: "Memorial Glade", seats: "3 seats open", people: [["Hana", "Seoul"], ["Theo", "Lyon"]], share: "You showed up for the same activity." },
+  { emoji: "🎤", activity: "Karaoke", when: "Friday · 8:00 pm", place: "A room on Durant", seats: "2 seats open", people: [["Priya", "Mumbai"], ["Jonah", "Oakland"]], share: "You and Jonah both like karaoke." },
+];
+
+function FindTables({ onBack }) {
+  return (
+    <Screen>
+      <button onClick={onBack} className="self-start font-semibold text-[var(--muted)] cursor-pointer min-h-[44px]">← Back</button>
+      <Title>Events being hosted</Title>
+      <p className="text-lg text-[var(--muted)]">Samples only. These are not real tables, and you cannot join them.</p>
+      {SAMPLE_TABLES.map((t) => (
+        <div key={t.activity} className="rounded-3xl bg-[var(--surface)] border border-[var(--line)] p-4 sm:p-5 shadow-[0_8px_0_var(--line)] flex flex-col gap-2">
+          <Chip>Example</Chip>
+          <p className="rt-display text-2xl font-extrabold">{t.emoji} {t.activity}</p>
+          <p className="text-[var(--muted)]">{t.when}<br />{t.place}</p>
+          <p className="font-bold">{t.seats}</p>
+          {t.people.map(([name, from]) => <span key={name} className="block">{name} · {from}</span>)}
+          <p className="rounded-2xl bg-[#FFF6D8] px-3 py-2.5 font-semibold">{t.share}</p>
+          <p className="text-sm text-[var(--muted)]">Example only. Not a table you can join.</p>
+        </div>
+      ))}
+    </Screen>
+  );
+}
+
 function LiveGate({ initialCode, onJoined }) {
   const savedUser = loadUser();
   const [step, setStep] = useState(savedUser ? "profile" : "email");
   const [user, setUser] = useState(savedUser);
   const [pin, setPin] = useState("");
   const [mode, setMode] = useState(initialCode ? "join" : "");
-  const [form, setForm] = useState({ name: "", email: savedUser ? savedUser.email : "", from: "", standing: "", activity: "", when: "", place: "", code: initialCode || "" });
+  const [form, setForm] = useState({ name: "", email: savedUser ? savedUser.email : "", from: "", standing: "", activity: "", when: "", whenAt: "", place: "", code: initialCode || "" });
   const [cards, setCards] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -1801,16 +2212,20 @@ function LiveGate({ initialCode, onJoined }) {
     if (cards) { setStep("table"); return; }
     setStep("cards");
   };
-  const submit = async (modeName) => {
+  const submit = async (modeName, codeOverride) => {
+    const code = String(codeOverride || form.code || "").trim().toUpperCase();
     if (!user) return setError("Sign in again, then come back to the table.");
     if (modeName === "host") {
       if (form.activity.trim().length < 2) return setError("Name the activity. That is why you sit together.");
-      if (form.when.trim().length < 2) return setError("Add when you meet.");
+      if (!form.whenAt) return setError("Add a date and time.");
+      const stamp = new Date(form.whenAt);
+      if (Number.isNaN(stamp.getTime()) || stamp.getTime() < Date.now() - 60 * 1000) return setError("Pick a time that has not already passed.");
       if (form.place.trim().length < 2) return setError("Add where you meet.");
-    } else if (!/^[A-Z0-9]{4}$/i.test(form.code.trim())) return setError("Enter the 4-character code.");
+    } else if (!/^[A-Z0-9]{4}$/i.test(code)) return setError("Enter the 4-character code.");
     setBusy(true); setError("");
     try {
-      await onJoined({ ...form, code: form.code.trim().toUpperCase(), answers: cards.answers, home: cards.home, secret: "", mode: modeName, userToken: user.token });
+      const whenAt = modeName === "host" ? new Date(form.whenAt).toISOString() : "";
+      await onJoined({ ...form, when: whenAt ? formatWhen(whenAt) : form.when, whenAt, code, answers: cards.answers, home: cards.home, secret: "", mode: modeName, userToken: user.token });
     } catch (e) {
       setBusy(false);
       setError(e.message || "Could not reach the sheet.");
@@ -1829,30 +2244,15 @@ function LiveGate({ initialCode, onJoined }) {
         <p className="text-lg text-[var(--muted)]">Open one activity, or sit down at a table that already exists. Up to six people.</p>
         <Btn onClick={() => { setError(""); setMode("host"); }}>Host a table</Btn>
         <Btn ghost onClick={() => { setError(""); setMode("join"); }}>Join with a code</Btn>
-        <button type="button" onClick={() => { setError(""); setMode("examples"); }} className="w-full rounded-2xl px-5 py-3.5 text-left border-2 border-[var(--blue)] bg-[var(--surface)] cursor-pointer">
+        <button type="button" onClick={() => { setError(""); setMode("find"); }} className="w-full rounded-2xl px-5 py-3.5 text-left border-2 border-[var(--blue)] bg-[var(--surface)] cursor-pointer">
           <span className="block rt-display font-extrabold text-lg">Let Strawberry find your table</span>
-          <span className="block mt-0.5 text-sm font-medium text-[var(--muted)]">Look at up to three open tables. These three are examples.</span>
+          <span className="block mt-0.5 text-sm font-medium text-[var(--muted)]">Samples of events being hosted. You cannot join them.</span>
         </button>
       </div>
     </Screen>
   );
-  if (step === "table" && mode === "examples") return (
-    <Screen>
-      <button onClick={() => setMode("")} className="self-start font-semibold text-[var(--muted)] cursor-pointer min-h-[44px]">← Back</button>
-      <Title>Pick one table.</Title>
-      <p className="text-lg text-[var(--muted)]">Examples only. These are not rooms, and you cannot join them.</p>
-      {EXAMPLE_TABLES.map((t) => (
-        <div key={t.activity} className="rounded-3xl bg-[var(--surface)] border border-[var(--line)] p-4 sm:p-5 shadow-[0_8px_0_var(--line)] flex flex-col gap-2">
-          <Chip>Example</Chip>
-          <p className="rt-display text-2xl font-extrabold">{t.emoji} {t.activity}</p>
-          <p className="text-[var(--muted)]">{t.when}<br />{t.place}</p>
-          <p className="font-bold">{t.seats}</p>
-          <p>{t.people.map(([name, from]) => <span key={name} className="block">{name} · {from}</span>)}</p>
-          <p className="rounded-2xl bg-[#FFF6D8] px-3 py-2.5 font-semibold">{t.share}</p>
-          <p className="text-sm text-[var(--muted)]">Example only. Not a table you can join.</p>
-        </div>
-      ))}
-    </Screen>
+  if (step === "table" && mode === "find") return (
+    <FindTables onBack={() => setMode("")} />
   );
   if (step === "table") return (
     <Screen>
@@ -1867,7 +2267,9 @@ function LiveGate({ initialCode, onJoined }) {
             ))}
           </div>
           <Field id="activity" label="Or name it" value={form.activity} set={set("activity")} placeholder="Boba crawl" />
-          <Field id="when" label="When" value={form.when} set={set("when")} placeholder="Thursday · 5:30 pm" maxLength={60} />
+          <label className="flex flex-col gap-1 font-semibold">When
+            <input id="when" type="datetime-local" value={form.whenAt} onChange={(e) => set("whenAt")(e.target.value)} className="w-full rounded-2xl border-2 border-[var(--line)] bg-[var(--bg)] p-3 text-lg font-normal text-[var(--ink)]" />
+          </label>
           <Field id="place" label="Where" value={form.place} set={set("place")} placeholder="A café near Sproul" maxLength={80} />
           <Btn onClick={() => submit("host")}>{busy ? "Opening…" : "Open the table"}</Btn>
         </>
@@ -1952,11 +2354,12 @@ function App() {
     const next = { ...s, ...(typeof patch === "function" ? patch(s) : patch) };
     const sess = sessionRef.current;
     if (LIVE && sess) {
+      const map = { capsule: "capsule", wish: "wish", vote: "vote", slot: "slot", intro: "intro", bye: "bye", contact: "contact", guessTarget: "guess_target", guessTopic: "guess_topic", guessText: "guess_text", nextActivity: "next_activity", meet3Pick: "meet3_at", meet3PickActivity: "meet3_activity" };
       const fields = {};
-      ["capsule", "wish", "vote", "slot", "intro", "bye"].forEach((k) => {
-        if (next[k] !== s[k] && next[k] != null && next[k] !== "") fields[k] = next[k];
+      Object.keys(map).forEach((k) => {
+        if (next[k] !== s[k] && next[k] != null && next[k] !== "") fields[map[k]] = next[k];
       });
-      if (Object.keys(fields).length) api("save", { code: sess.code, token: sess.token, ...fields }).catch(() => {});
+      if (Object.keys(fields).length) api("save", { code: sess.code, token: sess.token, ...fields }).then((data) => { if (data && data.room) setState((cur) => applyPack(cur, data)); }).catch(() => {});
     }
     return next;
   });
@@ -1970,27 +2373,10 @@ function App() {
       try {
         const data = await api("getState", { code: session.code, token: session.token });
         if (stop) return;
-        setState((s) => ({
-          ...s,
-          live: true,
-          code: data.room.code,
-          activity: data.room.activity,
-          when: data.room.when,
-          place: data.room.place,
-          people: data.people,
-          hook: s.hook || data.room.activity,
-          answers: s.answers || data.you.answers,
-          home: s.home || data.you.home,
-          standing: s.standing || data.you.standing,
-          from: data.you.from || s.from || "",
-          intro: s.intro || data.you.intro || "",
-          capsule: s.capsule || data.you.capsule || "",
-          wish: s.wish || data.you.wish || "",
-          bye: s.bye || data.you.bye || "",
-          slot: s.slot || data.you.slot || null,
-          vote: s.vote != null ? s.vote : (data.you.vote === "" || data.you.vote == null ? null : Number(data.you.vote)),
-          stage: s.stage === "gate" || s.stage === "onboarding" ? "reveal" : s.stage,
-        }));
+        setState((s) => {
+          const next = applyPack(s, data);
+          return { ...next, live: true, vote: s.vote != null ? s.vote : (data.you && data.you.vote !== "" && data.you.vote != null ? Number(data.you.vote) : s.vote), stage: s.stage === "gate" || s.stage === "onboarding" ? "reveal" : s.stage };
+        });
       } catch (e) {
         if (stop) return;
         store.remove(SESSION_KEY);
@@ -2011,12 +2397,17 @@ function App() {
   }, [state.live, state.people, state.noOverlap, answers]);
   const game = useMemo(() => buildGame(answers, home, personas, { live: state.live }), [answers, home, personas, state.live]);
   const stageIndex = STAGES.findIndex(([k]) => k === state.stage);
-  const nextStage = () => {
-    if (state.live && state.stage === "after1") { go("meeting2"); return; }
-    go(STAGES[Math.max(stageIndex, 0) + 1][0]);
+  const nextStage = () => { go(STAGES[Math.max(stageIndex, 0) + 1][0]); };
+  const onPack = (data) => setState((s) => applyPack(s, data));
+  const onLeft = () => {
+    store.remove(SESSION_KEY);
+    setSession(null);
+    try { history.replaceState(null, "", location.pathname); } catch {}
+    setState((s) => ({ ...INITIAL, live: true, stage: "gate", run: s.run + 1 }));
+    scrollTop();
   };
-  const plan = { when: state.when || ROUNDS.meetup1.when, place: state.place || ROUNDS.meetup1.place };
-  const props = { game, personas, home, state, update, next: nextStage, live: !!state.live, plan, intro: state.intro, onIntro: (line) => update({ intro: line }) };
+  const plan = { when: formatWhen(state.whenAt, state.when || ROUNDS.meetup1.when), place: state.place || ROUNDS.meetup1.place };
+  const props = { game, personas, home, state, update, next: nextStage, live: !!state.live, plan, intro: state.intro, onIntro: (line) => update({ intro: line }), session, onPack, onLeft, go };
 
   const join = async (body) => {
     const data = await api(body.mode === "host" ? "createRoom" : "join", body);
@@ -2026,10 +2417,11 @@ function App() {
     const url = `${location.pathname}?room=${data.room.code}`;
     try { history.replaceState(null, "", url); } catch {}
     setState((s) => ({
-      ...s, live: true, stage: "reveal", view: "app", run: s.run + 1,
-      answers: body.answers, home: body.home, standing: body.standing, from: body.from || "", hook: data.room.activity,
-      code: data.room.code, activity: data.room.activity, when: data.room.when, place: data.room.place,
-      people: data.people || [], m1: {}, vote: null, slot: null, poked: false, intro: "", capsule: "", wish: "", bye: "",
+      ...applyPack({ ...s, slot: "", nextActivity: "", meet3Pick: "", meet3PickActivity: "", guessText: "", contact: "", messages: data.messages || [] }, data),
+      live: true, stage: "reveal", view: "app", run: s.run + 1,
+      answers: body.answers, home: body.home, standing: body.standing, from: body.from || (data.you && data.you.from) || "",
+      hook: data.room.activity, youName: (data.you && data.you.name) || body.name, isHost: body.mode === "host" || !!(data.you && data.you.is_host),
+      m1: {}, vote: null, poked: false, intro: "", capsule: "", wish: "", bye: "",
     }));
     scrollTop();
   };
@@ -2045,7 +2437,7 @@ function App() {
   else if (state.stage === "after1") screen = <AfterMeeting1 {...props} />;
   else if (state.stage === "between") screen = <BetweenMeetings {...props} />;
   else if (state.stage === "meeting2") screen = <Meeting2 {...props} />;
-  else screen = <CheckIn game={game} personas={personas} live={!!state.live} code={state.code} sessionCode={session?.code} token={session?.token} />;
+  else screen = <CheckIn game={game} personas={personas} live={!!state.live} code={state.code} sessionCode={session?.code} token={session?.token} state={state} update={update} onLeft={onLeft} session={session} onPack={onPack} />;
 
   const usingDemo = !LIVE && !state.answers && state.stage !== "onboarding" && state.view === "app";
   const where = state.stage === "gate" ? "You" : state.view === "app" ? `${Math.max(stageIndex, 0) + 1}/${STAGES.length} · ${STAGES[stageIndex]?.[1] || ""}` : state.view === "results" ? "Results" : "Tests";
@@ -2060,6 +2452,7 @@ function App() {
       {usingDemo && <div className="bg-[var(--gold)] text-[var(--on-gold)] text-sm text-center py-1.5 font-semibold gutter">Using demo answers. Do onboarding to use yours.</div>}
       {state.noOverlap && !state.live && state.view === "app" && <div className="bg-[var(--blue)] text-white text-sm text-center py-1.5 font-semibold gutter">No-overlap path: the personas always picked the other vibe</div>}
       {state.gateError && state.stage === "gate" && <div className="bg-[var(--gold)] text-[var(--on-gold)] text-sm text-center py-1.5 font-semibold gutter">{state.gateError}</div>}
+      {state.live && state.roomStatus === "cancelled" && state.stage !== "gate" && <div className="bg-[var(--gold)] text-[var(--on-gold)] text-sm text-center py-1.5 font-semibold gutter">This table was cancelled. <button onClick={onLeft} className="underline cursor-pointer">Back to tables</button></div>}
       <main key={`${state.stage}-${state.view}-${state.run}`} className="flex-1 flex flex-col">{screen}</main>
       {!LIVE && <DemoNav state={state} go={go} setView={setView} reset={() => { store.remove(STATE_KEY); setState({ ...INITIAL, run: state.run + 1 }); scrollTop(); }} toggleFallback={() => update((s) => ({ noOverlap: !s.noOverlap }))} />}
     </div>
