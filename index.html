@@ -178,6 +178,7 @@ function peopleToPersonas(people) {
     guessText: p.guess_text || "", guessVerdict: p.guess_verdict || "",
     nextActivity: p.next_activity || "", meet3At: p.meet3_at || "", meet3Activity: p.meet3_activity || "",
     meet2Ok: p.meet2_ok || "", meet3Ok: p.meet3_ok || "",
+    missionTarget: p.mission_target || "", missionTopic: p.mission_topic || "", home: p.home || "",
   }));
 }
 function formatWhen(iso, fallback) {
@@ -246,6 +247,8 @@ function applyPack(s, data) {
     guessTarget: s.guessTarget || you.guess_target || "",
     guessTopic: s.guessTopic || you.guess_topic || "",
     guessVerdict: you.guess_verdict || s.guessVerdict || "",
+    missionTarget: you.mission_target != null ? you.mission_target : (s.missionTarget || ""),
+    missionTopic: you.mission_topic != null ? you.mission_topic : (s.missionTopic || ""),
   };
 }
 // 8 onboarding cards, 4 options each.
@@ -321,12 +324,12 @@ const CARDS = [
 // What a secret mission can ask you to find out.
 // `hint` = a tip to ask casually. `guessAboutYou` = what a persona types when the mission is about you (demo only).
 const MISSION_TOPICS = {
-  dish:       { label: "favorite dish from home",       hint: "Ask what they'd eat first after landing back home.", guessAboutYou: "Something with noodles?" },
-  tradition:  { label: "favorite tradition from home",  hint: "Ask about their favorite holiday growing up.",        guessAboutYou: "New Year's Eve with family" },
-  expression: { label: "favorite expression from home", hint: "Ask how they'd say \"that's crazy\" back home.",      guessAboutYou: "\"No way!\"" },
-  talent:     { label: "hidden talent",                 hint: "Ask what they could teach the group in 5 minutes.",  guessAboutYou: "Can cook anything without a recipe" },
-  music:      { label: "favorite artist",               hint: "Ask what they'd play if they had the aux.",          guessAboutYou: "Probably Taylor Swift" },
-  movie:      { label: "favorite movie",                hint: "Ask what they'd rewatch on a bad day.",              guessAboutYou: "Something Marvel" },
+  dish:       { label: "favorite dish from home",       hint: "Ask what they'd eat first after landing back home.", follow: "Ask why that dish matters at home.", guessAboutYou: "Something with noodles?" },
+  tradition:  { label: "favorite tradition from home",  hint: "Ask about their favorite holiday growing up.",        follow: "Ask why that tradition still matters.", guessAboutYou: "New Year's Eve with family" },
+  expression: { label: "favorite expression from home", hint: "Ask how they'd say \"that's crazy\" back home.",      follow: "Ask who taught them that expression.", guessAboutYou: "\"No way!\"" },
+  talent:     { label: "hidden talent",                 hint: "Ask what they could teach the group in 5 minutes.",  follow: "Ask how they found that talent.", guessAboutYou: "Can cook anything without a recipe" },
+  music:      { label: "favorite artist",               hint: "Ask what they'd play if they had the aux.",          follow: "Ask why that artist stayed with them.", guessAboutYou: "Probably Taylor Swift" },
+  movie:      { label: "favorite movie",                hint: "Ask what they'd rewatch on a bad day.",              follow: "Ask why they keep coming back to it.", guessAboutYou: "Something Marvel" },
 };
 // Your "from home" pick decides the topic of YOUR mission.
 const HOME_TO_TOPIC = { dish: "dish", tradition: "tradition", expression: "expression", other: "talent" };
@@ -1437,8 +1440,8 @@ function MissionReveal({ game, personas, typed, onDone, solo }) {
               </>
             ) : (
               <p className="rounded-2xl bg-[var(--bg)] p-3">{asked === "fair"
-                ? "Ask why it matters."
-                : "Ask the kinder question."}</p>
+                ? ((MISSION_TOPICS[m.topic] && MISSION_TOPICS[m.topic].follow) || "Ask why it matters.")
+                : ((MISSION_TOPICS[m.topic] && MISSION_TOPICS[m.topic].hint) || "Ask the kinder question.")}</p>
             )}
           </div>
         )}
@@ -1509,17 +1512,22 @@ function nameById(id, state, personas) {
 }
 
 function LiveMission({ game, personas, state, session, onPack, onDone }) {
-  const mission = (game.missions || []).find((m) => m.guesser === "You");
   const [text, setText] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!liveSession(session)) return;
+    api("getState", { code: session.code, token: session.token }).then(onPack).catch(() => {});
+  }, []);
+  const topic = MISSION_TOPICS[state.missionTopic] || null;
+  const target = personas.find((p) => p.person_id === state.missionTarget);
+  const mission = target && topic ? { target: target.name, topicLabel: topic.label, follow: topic.follow } : null;
   if (!mission) return (
     <TableShell center>
       <Title dark big>Wait for your table.</Title>
-      <p className="text-white/80 text-lg">Someone still has to join before the mission can start.</p>
+      <p className="text-white/80 text-lg">{personas.length ? "The missions are set once meeting 1 starts, and they stay put." : "Someone still has to join before the mission can start."}</p>
     </TableShell>
   );
-  const target = personas.find((p) => p.name === mission.target);
   const saveGuess = async (e) => {
     e.preventDefault();
     if (!text.trim()) return setError("Type what you found out. A guess is fine.");
@@ -1554,7 +1562,7 @@ function LiveMission({ game, personas, state, session, onPack, onDone }) {
           <Btn type="submit">{busy ? "Saving…" : "Send my answer"}</Btn>
         </form>
       ) : (
-        <p className="rounded-2xl bg-white/10 p-4">You wrote “{state.guessText}” about {mission.target}. {state.guessVerdict === "right" ? "They said that's right." : state.guessVerdict === "wrong" ? "They said that's not quite it. Ask why it matters." : "Waiting for them to say if it's right."}</p>
+        <p className="rounded-2xl bg-white/10 p-4">You wrote “{state.guessText}” about {mission.target}. {state.guessVerdict === "right" ? "They said that's right." : state.guessVerdict === "wrong" ? `They said that's not quite it. ${mission.follow}` : "Waiting for them to say if it's right."}</p>
       )}
       {incoming.map((p) => (
         <div key={p.person_id} className="rounded-3xl bg-[var(--surface)] text-[var(--ink)] p-5 flex flex-col gap-3">
@@ -2042,7 +2050,7 @@ function ChatReady({ game, personas, live, code, state, update, onLeft, session,
 
 function CheckIn({ game, personas, live, code, sessionCode, token, state, update, onLeft, session, onPack }) {
   const [again, setAgain] = useState(null);
-  const [met, setMet] = useState(null);
+  const [third, setThird] = useState(null);
   const [reasons, setReasons] = useState([]);
   const [connected, setConnected] = useState([]);
   const [connectWhy, setConnectWhy] = useState("");
@@ -2057,15 +2065,13 @@ function CheckIn({ game, personas, live, code, sessionCode, token, state, update
     setConnected(next.includes(name) ? next.filter((n) => n !== name) : [...next, name]);
   };
   const submit = async () => {
-    if (again === null || met === null) return setError("Answer both yes/no questions first.");
-    if (!reasons.length) return setError("Pick at least one reason.");
+    if (again === null || third === null) return setError("Answer both yes/no questions first.");
     if (!connected.length) return setError("Say who you connected with. Nobody yet is a fine answer.");
-    if (!connectWhy.trim()) return setError("Add one line on why, so the next group can be better.");
-    const row = { again, met, reasons, connected, connectWhy: connectWhy.trim(), group: game.groupName, at: new Date().toISOString() };
+    const row = { again, third, reasons, connected, connectWhy: connectWhy.trim(), group: game.groupName, at: new Date().toISOString() };
     if (live) {
       setBusy(true);
       try {
-        await api("checkin", { code: sessionCode, token, again, met, reasons, connected, connectWhy: row.connectWhy, group: game.groupName });
+        await api("checkin", { code: sessionCode, token, again, third, reasons, connected, connectWhy: row.connectWhy, group: game.groupName });
       } catch (e) {
         setBusy(false);
         return setError(e.message || "Could not save. Try again.");
@@ -2082,17 +2088,17 @@ function CheckIn({ game, personas, live, code, sessionCode, token, state, update
       <Chip>Check-in</Chip>
       <Title>Quick check-in 📝</Title>
       <div className="flex flex-col gap-2"><p className="font-semibold text-lg">Would you do this again?</p><YesNo value={again} onChange={(v) => { setAgain(v); setError(""); }} /></div>
-      <div className="flex flex-col gap-2"><p className="font-semibold text-lg">Did you meet again?</p><YesNo value={met} onChange={(v) => { setMet(v); setError(""); }} /></div>
+      <div className="flex flex-col gap-2"><p className="font-semibold text-lg">Want a third time?</p><YesNo value={third} onChange={(v) => { setThird(v); setError(""); }} /></div>
       <div className="flex flex-col gap-2">
         <p className="font-semibold text-lg">Who did you connect with?</p>
         <div className="flex flex-wrap gap-2">{[...personas.map((p) => p.name), "Nobody yet"].map((name) => <button key={name} onClick={() => toggleWho(name)} className={`min-h-[44px] rounded-full px-4 py-2 text-sm font-semibold border-2 cursor-pointer ${connected.includes(name) ? "bg-[var(--blue)] text-[var(--gold)] border-[var(--blue)]" : "bg-[var(--surface)] border-[var(--line)]"}`}>{name}</button>)}</div>
       </div>
       <div className="flex flex-col gap-2">
-        <label htmlFor="connect-why" className="font-semibold text-lg">Why?</label>
+        <label htmlFor="connect-why" className="font-semibold text-lg">Why? <span className="text-sm font-normal text-[var(--muted)]">You can leave this blank.</span></label>
         <textarea id="connect-why" rows={2} maxLength={160} value={connectWhy} onChange={(e) => { setConnectWhy(e.target.value); setError(""); }} placeholder="One sentence. This shapes the next group." className="w-full rounded-2xl border-2 border-[var(--line)] bg-[var(--surface)] p-3 text-lg text-[var(--ink)] resize-none" />
       </div>
       <div className="flex flex-col gap-2">
-        <p className="font-semibold text-lg">What played a part? <span className="text-sm font-normal text-[var(--muted)]">pick any</span></p>
+        <p className="font-semibold text-lg">What played a part? <span className="text-sm font-normal text-[var(--muted)]">optional</span></p>
         <div className="flex flex-wrap gap-2">{ROUNDS.checkinReasons.map((r) => <button key={r} onClick={() => toggle(r)} className={`min-h-[44px] rounded-full px-4 py-2 text-sm font-semibold border-2 cursor-pointer ${reasons.includes(r) ? "bg-[var(--coral)] text-white border-[var(--coral)]" : "bg-[var(--surface)] border-[var(--line)]"}`}>{r}</button>)}</div>
       </div>
       <Btn onClick={submit}>{busy ? "Saving…" : "OK, submit"}</Btn>

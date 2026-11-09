@@ -13,9 +13,9 @@
 
 var TABS = {
   Rooms: ["room_id", "code", "activity", "when_text", "place", "created_at", "host_person_id", "icebreakers", "when_at", "status", "meet2_activity", "meet2_place", "meet2_at", "meet3_activity", "meet3_place", "meet3_at", "reminded", "meet2_fixed", "meet3_fixed", "m1_started", "m2_started"],
-  People: ["room_id", "person_id", "joined_at", "name", "email", "from_place", "standing", "hook", "home", "secret", "answers_json", "intro", "capsule", "wish", "vote", "slot", "bye", "contact", "guess_target", "guess_topic", "guess_text", "guess_verdict", "left", "next_activity", "meet3_at", "meet3_activity", "meet2_ok", "meet3_ok"],
+  People: ["room_id", "person_id", "joined_at", "name", "email", "from_place", "standing", "hook", "home", "secret", "answers_json", "intro", "capsule", "wish", "vote", "slot", "bye", "contact", "guess_target", "guess_topic", "guess_text", "guess_verdict", "left", "next_activity", "meet3_at", "meet3_activity", "meet2_ok", "meet3_ok", "mission_target", "mission_topic"],
   Tokens: ["room_id", "person_id", "token", "is_host"],
-  Checkins: ["room_id", "person_id", "name", "again", "met", "reasons", "connected", "why", "group_name", "at"],
+  Checkins: ["room_id", "person_id", "name", "again", "met", "reasons", "connected", "why", "group_name", "at", "third"],
   Users: ["email", "name", "from_place", "standing", "home", "answers_json", "updated_at"],
   UserTokens: ["email", "token", "created_at"],
   Messages: ["room_id", "message_id", "person_id", "name", "text", "at"],
@@ -161,6 +161,7 @@ function join_(r) {
     var back = pack_(room, existing.person_id);
     return { token: again, person_id: existing.person_id, room: back.room, people: back.people, you: back.you, messages: back.messages, rejoined: true };
   }
+  if (meetingOpen_(room)) throw new Error("This table already started.");
   if (active.length >= MAX_PEOPLE) throw new Error("This table is full.");
   if (existing) {
     setCells_("People", existing._row, { left: "" });
@@ -179,7 +180,9 @@ function join_(r) {
 
 function getState_(r) {
   var found = find_(r.code, r.token);
-  return pack_(found.room, found.person.person_id);
+  lock_(function () { ensureMissions_(found.room); });
+  var room = rows_("Rooms").filter(function (x) { return x.room_id === found.room.room_id; })[0] || found.room;
+  return pack_(room, found.person.person_id);
 }
 
 function save_(r) {
@@ -407,15 +410,21 @@ function promptsFrom_(text) {
   return found.filter(function (p) { return p && String(p).trim().length > 8; }).slice(0, 3).map(function (p) { return clip_(p, 160); });
 }
 
+function yesNo_(value) {
+  if (value === true || value === "Yes" || value === "true") return "Yes";
+  if (value === false || value === "No" || value === "false") return "No";
+  return "";
+}
+
 function checkin_(r) {
   var found = find_(r.code, r.token);
   var why = clip_(r.connectWhy || r.why, 160);
-  if (!why) throw new Error("Add one line on why.");
-  var again = r.again === true || r.again === "Yes" || r.again === "true" ? "Yes" : "No";
-  var met = r.met === true || r.met === "Yes" || r.met === "true" ? "Yes" : "No";
+  var again = yesNo_(r.again);
+  if (!again) throw new Error("Say if you would do this again.");
+  var third = yesNo_(r.third);
+  var met = yesNo_(r.met);
   var reasons = clip_(Array.isArray(r.reasons) ? r.reasons.join(", ") : r.reasons, 300);
   var connected = clip_(Array.isArray(r.connected) ? r.connected.join(", ") : r.connected, 200);
-  if (!reasons) throw new Error("Pick at least one reason.");
   if (!connected) throw new Error("Say who you connected with.");
   var existing = rows_("Checkins").filter(function (x) {
     return x.room_id === found.room.room_id && x.person_id === found.person.person_id;
@@ -431,6 +440,7 @@ function checkin_(r) {
     why: why,
     group_name: clip_(r.group, 80),
     at: now_(),
+    third: third,
   };
   if (existing) setCells_("Checkins", existing._row, row);
   else append_("Checkins", row);
@@ -651,9 +661,38 @@ function startMeeting_(r) {
     var patch = {};
     patch[key] = "1";
     setCells_("Rooms", found.room._row, patch);
+    found.room[key] = "1";
   }
+  if (key === "m1_started") ensureMissions_(found.room);
   var room = rows_("Rooms").filter(function (x) { return x.room_id === found.room.room_id; })[0];
   return pack_(room, found.person.person_id);
+}
+
+function meetingOpen_(room) {
+  if (String(room.m1_started) === "1") return true;
+  if (!room.when_at) return false;
+  var at = new Date(room.when_at).getTime();
+  return !isNaN(at) && at <= Date.now();
+}
+
+function topicForHome_(home) {
+  var map = { dish: "dish", tradition: "tradition", expression: "expression", other: "talent" };
+  return map[String(home || "")] || "talent";
+}
+
+function ensureMissions_(room) {
+  if (!room || !meetingOpen_(room)) return;
+  var people = activePeople_(room.room_id);
+  if (people.length < 2) return;
+  if (people.some(function (p) { return p.mission_target; })) return;
+  people.sort(function (a, b) {
+    var byJoin = String(a.joined_at).localeCompare(String(b.joined_at));
+    return byJoin || String(a.person_id).localeCompare(String(b.person_id));
+  });
+  people.forEach(function (p, i) {
+    var target = people[(i + 1) % people.length];
+    setCells_("People", p._row, { mission_target: target.person_id, mission_topic: topicForHome_(target.home) });
+  });
 }
 
 function planKind_(kind) {
@@ -852,6 +891,9 @@ function pack_(room, viewerId) {
       meet3_activity: p.meet3_activity || "",
       meet2_ok: p.meet2_ok || "",
       meet3_ok: p.meet3_ok || "",
+      mission_target: p.mission_target || "",
+      mission_topic: p.mission_topic || "",
+      home: p.home || "",
     };
     if (p.person_id === viewerId) viewer = p;
     else others.push(pub);
@@ -894,6 +936,8 @@ function pack_(room, viewerId) {
       meet3_activity: viewer.meet3_activity || "",
       meet2_ok: viewer.meet2_ok || "",
       meet3_ok: viewer.meet3_ok || "",
+      mission_target: viewer.mission_target || "",
+      mission_topic: viewer.mission_topic || "",
       is_host: room.host_person_id === viewer.person_id,
     },
     people: others,
