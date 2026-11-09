@@ -241,6 +241,7 @@ function applyPack(s, data) {
     youName: you.name || s.youName || "",
     youId: you.person_id || s.youId || "",
     isHost: you.is_host != null ? !!you.is_host : !!s.isHost,
+    canManage: you.can_manage != null ? !!you.can_manage : !!s.canManage,
     from: you.from || s.from || "",
     answers: s.answers || you.answers,
     home: s.home || you.home,
@@ -901,6 +902,7 @@ function TableTools({ state, session, onPack, onLeft }) {
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState(false);
   if (!liveSession(session)) return null;
+  const canChange = !!(state.isHost || state.canManage);
   const save = async () => {
     if (activity.trim().length < 2) return setError("Name the activity.");
     if (place.trim().length < 2) return setError("Add where you meet.");
@@ -931,7 +933,7 @@ function TableTools({ state, session, onPack, onLeft }) {
   };
   return (
     <div className="flex flex-col gap-3">
-      {state.isHost ? (
+      {canChange ? (
         <>
           <Btn ghost onClick={() => setOpen(!open)}>{open ? "Close" : "Edit time or place"}</Btn>
           {open && (
@@ -945,6 +947,7 @@ function TableTools({ state, session, onPack, onLeft }) {
             </div>
           )}
           <Btn ghost onClick={() => (confirm ? cancel() : setConfirm(true))}>{confirm ? "Cancel this table for everyone" : "Cancel table"}</Btn>
+          {!state.isHost && <Btn ghost onClick={leave}>{busy ? "Leaving…" : "Leave this table"}</Btn>}
         </>
       ) : <Btn ghost onClick={leave}>{busy ? "Leaving…" : "Leave this table"}</Btn>}
       {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
@@ -2258,30 +2261,82 @@ const DECEMBER_EVENTS = [
   { emoji: "🧺", activity: "Picnic", when: "December", place: "Memorial Glade", whenAt: "2026-12-12T13:00" },
 ];
 
+function ManageEvent({ table, userToken, onChanged }) {
+  const [open, setOpen] = useState(false);
+  const [activity, setActivity] = useState(table.activity || "");
+  const [place, setPlace] = useState(table.place || "");
+  const [whenAt, setWhenAt] = useState(toLocalInput(table.when_at));
+  const [confirm, setConfirm] = useState(false);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    if (activity.trim().length < 2) return setError("Name the activity.");
+    if (place.trim().length < 2) return setError("Add where you meet.");
+    if (!whenAt) return setError("Add a date and time.");
+    const stamp = new Date(whenAt);
+    if (Number.isNaN(stamp.getTime()) || stamp.getTime() < Date.now() - 60 * 1000) return setError("Pick a time that has not already passed.");
+    setBusy(true); setError("");
+    try {
+      await api("updateRoom", {
+        userToken, code: table.code, activity: activity.trim(), place: place.trim(),
+        whenAt: stamp.toISOString(), when: formatWhen(stamp.toISOString()),
+      });
+      setOpen(false);
+      onChanged();
+    } catch (e) { setError(e.message || "Could not save."); }
+    setBusy(false);
+  };
+  const remove = async () => {
+    setBusy(true); setError("");
+    try { await api("cancelRoom", { userToken, code: table.code }); onChanged(); }
+    catch (e) { setError(e.message || "Could not delete."); setBusy(false); }
+  };
+  return (
+    <div className="flex flex-col gap-2">
+      <Btn ghost onClick={() => setOpen(!open)}>{open ? "Close" : "Edit this event"}</Btn>
+      {open && (
+        <div className="flex flex-col gap-3">
+          <Field id={`edit-${table.code}`} label="Activity" value={activity} set={setActivity} placeholder="Boba crawl" />
+          <label className="flex flex-col gap-1 font-semibold">When
+            <input type="datetime-local" value={whenAt} onChange={(e) => { setWhenAt(e.target.value); setError(""); }} className="w-full rounded-2xl border-2 border-[var(--line)] bg-[var(--bg)] p-3 text-lg font-normal text-[var(--ink)]" />
+          </label>
+          <Field id={`place-${table.code}`} label="Where" value={place} set={setPlace} placeholder="A café near Sproul" maxLength={80} />
+          <Btn onClick={save}>{busy ? "Saving…" : "Save changes"}</Btn>
+        </div>
+      )}
+      <Btn ghost onClick={() => (confirm ? remove() : setConfirm(true))}>{confirm ? "Delete this event for everyone" : "Delete this event"}</Btn>
+      {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
+    </div>
+  );
+}
+
 function FindTables({ onBack, onHost, onJoin, userToken, answers, error }) {
   const [tables, setTables] = useState([]);
+  const [manage, setManage] = useState(false);
+  const [tick, setTick] = useState(0);
   useEffect(() => {
     let stop = false;
     api("listTables", { userToken, answers: answers || {} })
-      .then((data) => { if (!stop) setTables(data.tables || []); })
+      .then((data) => { if (!stop) { setTables(data.tables || []); setManage(!!data.manage); } })
       .catch(() => { if (!stop) setTables([]); });
     return () => { stop = true; };
-  }, [userToken]);
+  }, [userToken, tick]);
   const opened = new Set(tables.map((t) => t.activity));
   const plans = DECEMBER_EVENTS.filter((event) => !opened.has(event.activity));
   return (
     <Screen>
       <button onClick={onBack} className="self-start font-semibold text-[var(--muted)] cursor-pointer min-h-[44px]">← Back</button>
       <Title>Events being hosted</Title>
-      <p className="text-lg text-[var(--muted)]">Four small events in December. Open the one you are hosting, then change the day and time. After it is open, other people can join.</p>
+      <p className="text-lg text-[var(--muted)]">{manage ? "You can edit or delete any open event. Other people still join the ones that have a seat." : "Four small events in December. Open the one you are hosting, then change the day and time. After it is open, other people can join."}</p>
       {tables.map((t) => (
         <div key={t.code} className="rounded-3xl bg-[var(--surface)] border border-[var(--line)] p-4 sm:p-5 shadow-[0_8px_0_var(--line)] flex flex-col gap-2">
           <p className="rt-display text-2xl font-extrabold">{t.activity}</p>
           <p className="text-[var(--muted)]">{t.when}<br />{t.place}</p>
-          <p className="font-bold">{t.seats} {t.seats === 1 ? "seat" : "seats"} open</p>
+          <p className="font-bold">{t.full ? "Full" : `${t.seats} ${t.seats === 1 ? "seat" : "seats"} open`}</p>
           {(t.people || []).map((p) => <span key={`${p.name}-${p.from}`} className="block">{p.name}{p.from ? ` · ${p.from}` : ""}</span>)}
           {t.share && <p className="rounded-2xl bg-[#FFF6D8] px-3 py-2.5 font-semibold">{t.share}</p>}
-          {t.yours ? <p className="text-sm font-semibold">You're already at this table.</p> : <Btn onClick={() => onJoin(t.code)}>Join this table</Btn>}
+          {t.yours ? <p className="text-sm font-semibold">You're already at this table.</p> : t.full ? null : <Btn onClick={() => onJoin(t.code)}>Join this table</Btn>}
+          {manage && <ManageEvent table={t} userToken={userToken} onChanged={() => setTick((n) => n + 1)} />}
         </div>
       ))}
       {plans.map((event) => (

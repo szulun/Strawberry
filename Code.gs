@@ -22,7 +22,7 @@ var TABS = {
   Finished: ["email", "room_id", "kind", "activity", "when_text", "at"],
 };
 // The team can host before anyone has finished three meetings.
-var FOUNDING_EMAILS = ["zoeyhuang1@gmail.com", "nicole.jkim@berkeley.edu", "matteo.bonche@berkeley.edu", "nicolas.carre@berkeley.edu"];
+var FOUNDING_EMAILS = ["zoeyhuang1@gmail.com", "szuh@berkeley.edu", "nicole.jkim@berkeley.edu", "matteo.bonche@berkeley.edu", "nicolas.carre@berkeley.edu"];
 var HOST_NEED = 3;
 
 var CARD_KEYS = {
@@ -210,9 +210,10 @@ function save_(r) {
 }
 
 function updateRoom_(r) {
-  var found = find_(r.code, r.token);
-  assertHost_(found);
-  if (found.room.status === "cancelled") throw new Error("This table was cancelled.");
+  var found = r.token ? find_(r.code, r.token) : null;
+  var room = found ? found.room : foundingRoom_(r);
+  if (found) assertCanChange_(found);
+  if (room.status === "cancelled") throw new Error("This table was cancelled.");
   var patch = {};
   if (r.activity != null) {
     var activity = clip_(r.activity, 40);
@@ -232,17 +233,21 @@ function updateRoom_(r) {
     patch.when_text = clip_(r.when, 60) || prettyWhen_(whenAt);
   }
   if (!Object.keys(patch).length) throw new Error("Nothing to change.");
-  setCells_("Rooms", found.room._row, patch);
-  var room = rows_("Rooms").filter(function (x) { return x.room_id === found.room.room_id; })[0];
-  return pack_(room, found.person.person_id);
+  setCells_("Rooms", room._row, patch);
+  room = rows_("Rooms").filter(function (x) { return x.room_id === room.room_id; })[0];
+  if (found) return pack_(room, found.person.person_id);
+  return { saved: true };
 }
 
 function cancelRoom_(r) {
-  var found = find_(r.code, r.token);
-  assertHost_(found);
-  setCells_("Rooms", found.room._row, { status: "cancelled" });
-  var room = rows_("Rooms").filter(function (x) { return x.room_id === found.room.room_id; })[0];
-  return pack_(room, found.person.person_id);
+  var found = r.token ? find_(r.code, r.token) : null;
+  var room = found ? found.room : foundingRoom_(r);
+  if (found) assertCanChange_(found);
+  if (room.status === "cancelled") throw new Error("This table was cancelled.");
+  setCells_("Rooms", room._row, { status: "cancelled" });
+  room = rows_("Rooms").filter(function (x) { return x.room_id === room.room_id; })[0];
+  if (found) return pack_(room, found.person.person_id);
+  return { saved: true };
 }
 
 function leaveRoom_(r) {
@@ -254,18 +259,20 @@ function leaveRoom_(r) {
 
 function listTables_(r) {
   var user = userByToken_(r.userToken);
+  var manage = isFounding_(user.email);
   var profile = rows_("Users").filter(function (u) { return u.email === user.email; })[0];
   var mine = softAnswers_(r.answers);
   if (!Object.keys(mine).length && profile) mine = parseAnswers_(profile.answers_json);
   var tables = [];
   rows_("Rooms").forEach(function (room) {
     if (room.status === "cancelled" || !room.code) return;
-    if (room.when_at) {
+    if (!manage && room.when_at) {
       var at = new Date(room.when_at).getTime();
       if (!isNaN(at) && at < Date.now() - 2 * 60 * 60 * 1000) return;
     }
     var people = activePeople_(room.room_id);
-    if (!people.length || people.length >= MAX_PEOPLE) return;
+    if (!people.length) return;
+    if (!manage && people.length >= MAX_PEOPLE) return;
     var yours = people.some(function (p) { return p.email === user.email; });
     tables.push({
       code: room.code,
@@ -273,14 +280,15 @@ function listTables_(r) {
       when: room.when_text,
       when_at: room.when_at,
       place: room.place,
-      seats: MAX_PEOPLE - people.length,
+      seats: Math.max(MAX_PEOPLE - people.length, 0),
+      full: people.length >= MAX_PEOPLE,
       yours: yours,
       people: people.map(function (p) { return { name: p.name, from: p.from_place }; }),
       share: shareLine_(mine, people, user.email),
     });
   });
   tables.sort(function (a, b) { return String(a.when_at || "9999").localeCompare(String(b.when_at || "9999")); });
-  return { tables: tables.slice(0, 12) };
+  return { tables: tables.slice(0, 12), manage: manage };
 }
 
 function postMessage_(r) {
@@ -622,8 +630,18 @@ function isHost_(found) {
   return String(found.tok.is_host) === "1" || found.room.host_person_id === found.person.person_id;
 }
 
-function assertHost_(found) {
-  if (!isHost_(found)) throw new Error("Only the host can change this table.");
+function assertCanChange_(found) {
+  if (isHost_(found) || isFounding_(found.person.email)) return;
+  throw new Error("Only the host can change this table.");
+}
+
+function foundingRoom_(r) {
+  var row = userByToken_(r.userToken);
+  if (!isFounding_(row.email)) throw new Error("Only the host can change this table.");
+  var code = String(r.code || "").trim().toUpperCase();
+  var room = rows_("Rooms").filter(function (x) { return x.code === code; })[0];
+  if (!room) throw new Error("No table with that code.");
+  return room;
 }
 
 function softAnswers_(raw) {
@@ -939,6 +957,7 @@ function pack_(room, viewerId) {
       mission_target: viewer.mission_target || "",
       mission_topic: viewer.mission_topic || "",
       is_host: room.host_person_id === viewer.person_id,
+      can_manage: isFounding_(viewer.email),
     },
     people: others,
     messages: roomMessages_(room, people),
