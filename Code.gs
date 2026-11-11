@@ -1,10 +1,11 @@
 /**
- * Strawberry — Google Apps Script backend.
+ * globuddy — Google Apps Script backend.
  *
- * 貼到「Strawberry data」的 Apps Script，存檔，選 setup 按執行，授權。
- * 然後：部署 → 新增部署作業 → 網頁應用程式。
+ * 貼到現有試算表的 Apps Script，存檔，選 setup 按執行，授權。
+ * 試算表如果還叫 Strawberry data，在 Google 裡把名稱改成 globuddy。
+ * 然後：部署 → 管理部署作業 → 編輯現在這個部署 → 新版本。網址不要換。
  * 執行身分：我。誰可以存取：所有人。
- * 把結尾是 /exec 的網址貼回 strawberry.html 的 API_URL。
+ * 把結尾是 /exec 的網址貼回 index.html 的 API_URL。
  *
  * 試算表分頁：Rooms、People、Checkins。Tokens 會藏起來。
  * 破冰題要用 AI 時：專案設定 → 指令碼屬性，新增 ANTHROPIC_API_KEY。
@@ -24,6 +25,8 @@ var TABS = {
 // The team can host before anyone has finished three meetings.
 var FOUNDING_EMAILS = ["zoeyhuang1@gmail.com", "szuh@berkeley.edu", "nicole.jkim@berkeley.edu", "matteo.bonche@berkeley.edu", "nicolas.carre@berkeley.edu"];
 var HOST_NEED = 3;
+// No one has finished three meetings yet, so anyone signed in can open an event.
+var HOST_OPEN = true;
 
 var CARD_KEYS = {
   drink: ["coffee", "boba", "matcha", "smoothie"],
@@ -74,7 +77,7 @@ function setup() {
 }
 
 function doGet() {
-  return json_({ ok: true, app: "Strawberry" });
+  return json_({ ok: true, app: "globuddy" });
 }
 
 function doPost(e) {
@@ -337,10 +340,10 @@ function icebreaker_(r) {
   return made;
 }
 
-/** Run once from the editor to allow Strawberry to send email. */
+/** Run once from the editor to allow globuddy to send email. */
 function testMail() {
   var email = Session.getActiveUser().getEmail();
-  MailApp.sendEmail(email, "Strawberry mail test", "Mail from Strawberry works.");
+  MailApp.sendEmail(email, "globuddy mail test", "Mail from globuddy works.");
   Logger.log("Sent to " + email);
 }
 
@@ -465,6 +468,7 @@ function isFounding_(email) {
 }
 
 function canHost_(email) {
+  if (HOST_OPEN) return !!normEmail_(email);
   return isFounding_(email) || seatsFor_(email).length >= HOST_NEED;
 }
 
@@ -520,7 +524,7 @@ function sendCode_(r) {
   cache.put("code:" + email, code, 600);
   cache.put("tries:" + email, "0", 600);
   cache.put("sent:" + email, "1", 60);
-  MailApp.sendEmail(email, "Your Strawberry code", "Your code is " + code + ".\n\nIt expires in 10 minutes. If you did not ask for this, ignore this email.");
+  MailApp.sendEmail(email, "Your globuddy code", "Your code is " + code + ".\n\nIt expires in 10 minutes. If you did not ask for this, ignore this email.");
   return { sent: true };
 }
 
@@ -798,7 +802,7 @@ function planNote_(room, kind) {
   var what = (kind === "m2" || kind === "soon2") ? (room.meet2_activity || room.activity)
     : (kind === "m3" || kind === "soon3") ? (room.meet3_activity || room.activity)
     : room.activity;
-  var body = "See you " + when + ".\n" + (what || "") + (room.place ? "\n" + room.place : "") + "\n\nOpen Strawberry at that time. This email is your reminder.";
+  var body = "See you " + when + ".\n" + (what || "") + (room.place ? "\n" + room.place : "") + "\n\nOpen globuddy at that time. This email is your reminder.";
   return { when: when, body: body };
 }
 
@@ -806,7 +810,7 @@ function mailPeople_(room, people, kind) {
   var note = planNote_(room, kind);
   (people || []).forEach(function (p) {
     if (!p.email) return;
-    try { MailApp.sendEmail(p.email, "Strawberry: see you " + note.when, note.body); } catch (e) {}
+    try { MailApp.sendEmail(p.email, "globuddy: see you " + note.when, note.body); } catch (e) {}
   });
 }
 

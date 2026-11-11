@@ -3,22 +3,22 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Strawberry</title>
+<title>globuddy</title>
 <script>
 /* First visit plays intro_c.html. A room link, a saved sign-in, or a seen flag skips it. */
 (function () {
   try {
     var q = new URLSearchParams(location.search);
     if (q.get("intro") === "1") {
-      try { localStorage.setItem("strawberry.intro.v1", "1"); } catch (e) {}
+      try { localStorage.setItem("globuddy.intro.v1", "1"); } catch (e) {}
       q.delete("intro");
       history.replaceState(null, "", location.pathname + (q.toString() ? "?" + q : "") + location.hash);
       return;
     }
     if ((q.get("room") || "").trim()) return;
-    if (localStorage.getItem("strawberry.intro.v1")) return;
-    if (localStorage.getItem("strawberry.user.v1")) return;
-    if (localStorage.getItem("strawberry.session.v1")) return;
+    if (localStorage.getItem("globuddy.intro.v1")) return;
+    if (localStorage.getItem("globuddy.user.v1")) return;
+    if (localStorage.getItem("globuddy.session.v1")) return;
     location.replace("intro_c.html");
   } catch (e) {}
 })();
@@ -128,7 +128,7 @@ button:focus-visible, textarea:focus-visible { outline: 3px solid var(--gold); o
 </head>
 <body>
 
-<div id="rt-root"><p class="gutter" style="padding-block:24px;color:var(--muted)">Loading Strawberry…</p></div>
+<div id="rt-root"><p class="gutter" style="padding-block:24px;color:var(--muted)">Loading globuddy…</p></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
@@ -143,15 +143,15 @@ const { useState, useEffect, useRef, useMemo } = React;
 // CONTENT — edit freely. Everything the app shows is pre-written here.
 // =====================================================================
 
-const APP_NAME = "Strawberry";
+const APP_NAME = "globuddy";
 function track(name) {
   try { if (window.posthog) window.posthog.capture(name); } catch (e) {}
 }
 // Paste the Apps Script web app URL (ends in /exec) after you deploy Code.gs.
 const API_URL = "https://script.google.com/macros/s/AKfycbzhoXrhnfcgcWELtI_jlJXDen-jKRkJl3y4jce4zArYUaxMmV9w68MfzFmjxxH9BNyT/exec";
 const LIVE = /^https:\/\/script\.google\.com\//.test(API_URL);
-const SESSION_KEY = "strawberry.session.v1";
-const USER_KEY = "strawberry.user.v1";
+const SESSION_KEY = "globuddy.session.v1";
+const USER_KEY = "globuddy.user.v1";
 // Test phase only. Set to false before a real Berkeley round.
 const ALLOW_GMAIL = true;
 function emailOk(value) {
@@ -666,8 +666,8 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { memory[k] = v; } },
   remove(k) { try { localStorage.removeItem(k); } catch { delete memory[k]; } },
 };
-const STATE_KEY = "strawberry.state.v1";
-const CHECKINS_KEY = "strawberry.checkins";
+const STATE_KEY = "globuddy.state.v1";
+const CHECKINS_KEY = "globuddy.checkins";
 
 function sendCheckin(row) {
   const ids = Object.values(FORM_ENTRIES).filter(Boolean);
@@ -1996,7 +1996,7 @@ function ChatReady({ game, personas, live, code, state, update, onLeft, session,
   const [contact, setContact] = useState(state?.contact || "");
   const you = { ...YOU, name: state?.youName || "You" };
   const people = [you, ...personas];
-  const link = live && code ? `${location.origin}${location.pathname}?room=${code}` : `strawberry.app/chat/${slug(game.groupName)}`;
+  const link = live && code ? `${location.origin}${location.pathname}?room=${code}` : `globuddy.app/chat/${slug(game.groupName)}`;
   if (live) {
     return (
       <Screen>
@@ -2367,23 +2367,23 @@ function YourSeats({ onBack, onHost, userToken }) {
       setData(d);
       const n = (d.seats || []).length;
       let seen = 0;
-      try { seen = Number(sessionStorage.getItem("strawberry.seats.seen") || 0); } catch {}
+      try { seen = Number(sessionStorage.getItem("globuddy.seats.seen") || 0); } catch {}
       if (n > seen) {
         setFresh(Math.min(n, HOST_NEED) - 1);
         if (n >= HOST_NEED && seen < HOST_NEED && !d.founding) setOpened(true);
-        try { sessionStorage.setItem("strawberry.seats.seen", String(n)); } catch {}
+        try { sessionStorage.setItem("globuddy.seats.seen", String(n)); } catch {}
       }
     }).catch((e) => setError(e.message || "Sign in again."));
   }, [userToken]);
   const seats = (data && data.seats) || [];
   const count = Math.min(seats.length, HOST_NEED);
   const left = Math.max(HOST_NEED - seats.length, 0);
-  const line = !data ? "Checking your seats…" : data.founding && seats.length < HOST_NEED ? "You can host. The team opens the first tables." : seats.length >= HOST_NEED ? "Three seats. You can host now." : seats.length === 0 ? "No seats yet. Your first meeting fills one." : `${seats.length} of 3 seats. ${left} more ${left === 1 ? "meeting" : "meetings"} to host.`;
+  const line = !data ? "Checking your seats…" : data.canHost && seats.length < HOST_NEED ? "You can host a table." : seats.length >= HOST_NEED ? "Three seats. You can host now." : seats.length === 0 ? "No seats yet. Your first meeting fills one." : `${seats.length} of 3 seats. ${left} more ${left === 1 ? "meeting" : "meetings"} to host.`;
   return (
     <Screen>
       {onBack && <button type="button" onClick={onBack} className="self-start font-semibold text-[var(--muted)] cursor-pointer min-h-[44px]">← Back</button>}
       <Title>Your seats</Title>
-      <p className="text-lg text-[var(--muted)]">Only you see this page. Stay through three meetings, then you can host a table.</p>
+      <p className="text-lg text-[var(--muted)]">Only you see this page. {data && data.canHost ? "You can host a table." : "Stay through three meetings, then you can host a table."}</p>
       <section className="seat-table">
         <div className="seat-grid">
           {[0, 1, 2].map((k) => {
@@ -2406,7 +2406,7 @@ function YourSeats({ onBack, onHost, userToken }) {
       {data && data.canHost ? (
         <div className={`rounded-3xl p-4 bg-[var(--gold)] text-[var(--on-gold)] ${opened ? "rt-pop" : ""}`}>
           <p className="rt-display text-xl font-extrabold">You can host a table.</p>
-          <p className="mt-1 text-sm">{data.founding && seats.length < HOST_NEED ? "The team opens the first tables. Everyone else waits for three meetings." : "You stayed through three meetings. Now you can set a table for someone new."}</p>
+          <p className="mt-1 text-sm">{seats.length < HOST_NEED ? "Anyone signed in can open a table." : "You stayed through three meetings. Now you can set a table for someone new."}</p>
           {onHost && <div className="mt-3"><Btn onClick={onHost}>Host a table</Btn></div>}
         </div>
       ) : data ? (
@@ -2561,7 +2561,7 @@ function LiveGate({ initialCode, onJoined, onAccount }) {
         {hosting && hosting.canHost === false ? <button type="button" onClick={lockedHost} className={`w-full min-h-[56px] rounded-2xl px-5 py-3 border-2 border-dashed border-[var(--line)] text-[var(--muted)] font-semibold cursor-pointer ${shake ? "shake" : ""}`} onAnimationEnd={() => setShake(false)}>Host a table<span className="block text-sm font-medium">Opens after three meetings.</span></button> : <Btn onClick={() => { setError(""); setMode("host"); }}>Host a table</Btn>}
         <Btn ghost onClick={() => { setError(""); setMode("join"); }}>Join with a code</Btn>
         <button type="button" onClick={() => { setError(""); setMode("find"); }} className="w-full rounded-2xl px-5 py-3.5 text-left border-2 border-[var(--blue)] bg-[var(--surface)] cursor-pointer">
-          <span className="block rt-display font-extrabold text-lg">Let Strawberry find your table</span>
+          <span className="block rt-display font-extrabold text-lg">Let globuddy find your table</span>
           <span className="block mt-0.5 text-sm font-medium text-[var(--muted)]">Four small events in December. The host can change the time.</span>
         </button>
       </div>
@@ -2696,7 +2696,7 @@ function icsHref(n, item) {
   const stamp = (dt) => new Date(dt).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
   const start = new Date(item.at);
   const end = new Date(start.getTime() + 2 * 3600000);
-  const body = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Strawberry//EN", "BEGIN:VEVENT", `UID:${item.code || "table"}-m${n}@strawberry`, `DTSTAMP:${stamp(new Date())}`, `DTSTART:${stamp(start)}`, `DTEND:${stamp(end)}`, `SUMMARY:Strawberry meeting ${n}: ${item.activity || "Meetup"}`, `LOCATION:${item.place || ""}`, "END:VEVENT", "END:VCALENDAR"].join("\r\n");
+  const body = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//globuddy//EN", "BEGIN:VEVENT", `UID:${item.code || "table"}-m${n}@globuddy`, `DTSTAMP:${stamp(new Date())}`, `DTSTART:${stamp(start)}`, `DTEND:${stamp(end)}`, `SUMMARY:globuddy meeting ${n}: ${item.activity || "Meetup"}`, `LOCATION:${item.place || ""}`, "END:VEVENT", "END:VCALENDAR"].join("\r\n");
   return "data:text/calendar;charset=utf-8," + encodeURIComponent(body);
 }
 function stripPeople(state, personas, kind) {
@@ -2819,7 +2819,7 @@ function Schedule({ state, personas, session, onPack, onReview, onOpen }) {
         {away && <p className="rounded-2xl bg-[var(--bg)] px-4 py-3">You're sitting this one out. The others still meet.</p>}
         {next.fixed ? (
           <div className="grid grid-cols-2 gap-3">
-            <a className="min-h-[50px] rounded-2xl border-2 border-[var(--line)] flex items-center justify-center font-semibold" href={icsHref(next.n, { ...next, code: state.code })} download={`strawberry-meeting-${next.n}.ics`}>Add to calendar</a>
+            <a className="min-h-[50px] rounded-2xl border-2 border-[var(--line)] flex items-center justify-center font-semibold" href={icsHref(next.n, { ...next, code: state.code })} download={`globuddy-meeting-${next.n}.ics`}>Add to calendar</a>
             <a className="min-h-[50px] rounded-2xl border-2 border-[var(--line)] flex items-center justify-center font-semibold" target="_blank" rel="noopener" href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${next.place || next.activity} Berkeley`)}`}>Directions</a>
           </div>
         ) : <Btn onClick={() => onOpen(next.open)}>{next.kind ? `Answer for meeting ${next.n}` : "Suggest a time"}</Btn>}
@@ -3075,7 +3075,7 @@ ReactDOM.createRoot(document.getElementById("rt-root")).render(<App />);
     var pre = document.createElement("pre");
     pre.className = "gutter";
     pre.style.cssText = "color:var(--danger);white-space:pre-wrap;font-size:13px;padding-block:24px";
-    pre.textContent = "Strawberry failed to start: " + (e && e.message || e);
+    pre.textContent = "globuddy failed to start: " + (e && e.message || e);
     root.appendChild(pre);
   }
 })();
