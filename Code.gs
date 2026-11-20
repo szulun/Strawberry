@@ -339,6 +339,12 @@ function listTables_(r) {
   var profile = rows_("Users").filter(function (u) { return u.email === user.email; })[0];
   var mine = softAnswers_(r.answers);
   if (!Object.keys(mine).length && profile) mine = parseAnswers_(profile.answers_json);
+  var peopleByRoom = {};
+  rows_("People").forEach(function (p) {
+    if (String(p.left) === "1" || !p.room_id) return;
+    if (!peopleByRoom[p.room_id]) peopleByRoom[p.room_id] = [];
+    peopleByRoom[p.room_id].push(p);
+  });
   var tables = [];
   rows_("Rooms").forEach(function (room) {
     if (room.status === "cancelled" || !room.code) return;
@@ -346,7 +352,7 @@ function listTables_(r) {
       var at = new Date(room.when_at).getTime();
       if (!isNaN(at) && at < Date.now() - 2 * 60 * 60 * 1000) return;
     }
-    var people = activePeople_(room.room_id);
+    var people = peopleByRoom[room.room_id] || [];
     if (!people.length) return;
     if (!manage && people.length >= MAX_PEOPLE) return;
     var yours = people.some(function (p) { return p.email === user.email; });

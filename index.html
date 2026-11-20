@@ -2310,12 +2310,15 @@ function FindTables({ onBack, onHost, onJoin, userToken, answers, error }) {
   const [manage, setManage] = useState(false);
   const [tick, setTick] = useState(0);
   const [joining, setJoining] = useState("");
+  const [loading, setLoading] = useState(true);
   const joiningRef = useRef("");
   useEffect(() => {
     let stop = false;
+    setLoading(true);
     api("listTables", { userToken, answers: answers || {} })
       .then((data) => { if (!stop) { setTables(data.tables || []); setManage(!!data.manage); } })
-      .catch(() => { if (!stop) setTables([]); });
+      .catch(() => { if (!stop) setTables([]); })
+      .finally(() => { if (!stop) setLoading(false); });
     return () => { stop = true; };
   }, [userToken, tick]);
   const started = (t) => {
@@ -2354,6 +2357,7 @@ function FindTables({ onBack, onHost, onJoin, userToken, answers, error }) {
       <Title>{yours.length ? "Your tables" : "Events being hosted"}</Title>
       <p className="text-lg text-[var(--muted)]">{yours.length ? "Activities you have joined. Your seat stays if you open another one." : manage ? "You can edit or delete any open event. Other people still join the ones that have a seat." : "Tables that are already open. Join one that still has a seat."}</p>
       {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
+      {loading && <p className="text-lg text-[var(--muted)]">Loading tables…</p>}
       {yours.map(card)}
       {others.length > 0 && yours.length > 0 && <p className="text-xs font-bold uppercase tracking-widest text-[var(--muted)] mt-2">Other tables</p>}
       {others.map(card)}
