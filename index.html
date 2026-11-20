@@ -2354,7 +2354,7 @@ function FindTables({ onBack, onHost, onJoin, userToken, answers, error }) {
       <p className="text-[var(--muted)]">{t.when}<br />{t.place}</p>
       <p className="font-bold">{t.full ? "Full" : `${t.seats} ${t.seats === 1 ? "seat" : "seats"} open`}</p>
       {(t.people || []).map((p) => <span key={`${p.name}-${p.from}`} className="block">{p.name}{p.from ? ` · ${p.from}` : ""}</span>)}
-      {t.share && <p className="rounded-2xl bg-[#FFF6D8] px-3 py-2.5 font-semibold">{t.share}</p>}
+      {t.share && <p className="rounded-2xl bg-[#FFF6D8] text-[#16251E] px-3 py-2.5 font-semibold">{t.share}</p>}
       {t.yours ? <Btn ghost onClick={() => join(t.code)}>{joining === t.code ? "Opening…" : "Open this table"}</Btn> : t.full ? null : started(t) ? <p className="text-sm font-semibold">This table already started.</p> : conflict(t.when_at) ? <p className="text-sm font-semibold">You already have a table within two hours of this one.</p> : <Btn onClick={() => join(t.code)}>{joining === t.code ? "Joining…" : "Join this table"}</Btn>}
       {manage && <ManageEvent table={t} userToken={userToken} onChanged={() => setTick((n) => n + 1)} />}
     </div>
