@@ -54,6 +54,7 @@ var CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 // Test phase only. Set to false before a real Berkeley round.
 var ALLOW_GMAIL = true;
 var MAX_PEOPLE = 6;
+var MEET_SPAN = 2 * 60 * 60 * 1000;
 var COLORS = ["#E2553A", "#1E9A60", "#6A4BE8", "#0E7490", "#C2410C", "#7C3AED"];
 
 function setup() {
@@ -74,6 +75,76 @@ function setup() {
   if (blank && blank.getLastRow() <= 1 && ss.getSheets().length > 1) ss.deleteSheet(blank);
   installReminders_();
   Logger.log("Setup done. Deploy as a web app. Execute as: Me. Access: Anyone.");
+}
+
+// Run once from the script editor. Moves past open tables into December and opens the four December plans.
+// Does not email anyone. Does not need a new deployment.
+function openDecember() {
+  var plans = [
+    { activity: "Hike to the Big C", place: "California Memorial Stadium", whenAt: "2026-12-05T11:00:00-08:00" },
+    { activity: "Coffee", place: "A café near campus", whenAt: "2026-12-05T15:00:00-08:00" },
+    { activity: "Boba", place: "A shop near Telegraph", whenAt: "2026-12-06T14:00:00-08:00" },
+    { activity: "Picnic", place: "Memorial Glade", whenAt: "2026-12-12T13:00:00-08:00" },
+  ];
+  var notes = lock_(function () {
+    var host = decemberHost_();
+    var done = [];
+    var planNames = {};
+    plans.forEach(function (plan) { planNames[plan.activity] = true; });
+    plans.forEach(function (plan) {
+      var room = rows_("Rooms").filter(function (x) { return x.status !== "cancelled" && String(x.activity) === plan.activity; })[0];
+      if (room) {
+        setCells_("Rooms", room._row, { when_at: iso_(plan.whenAt), when_text: prettyWhen_(plan.whenAt), place: plan.place, m1_started: "", status: "open" });
+        done.push(room.code + " kept, moved to " + prettyWhen_(plan.whenAt) + " · " + plan.activity);
+        return;
+      }
+      var code = newCode_();
+      var roomId = Utilities.getUuid();
+      var personId = Utilities.getUuid();
+      var now = now_();
+      append_("Rooms", {
+        room_id: roomId, code: code, activity: plan.activity, when_text: prettyWhen_(plan.whenAt), place: plan.place,
+        created_at: now, host_person_id: personId, when_at: iso_(plan.whenAt), status: "open",
+      });
+      append_("People", personRow_(roomId, personId, host, plan.activity, now));
+      append_("Tokens", { room_id: roomId, person_id: personId, token: Utilities.getUuid(), is_host: "1" });
+      SpreadsheetApp.flush();
+      done.push(code + " opened · " + plan.activity + " · " + prettyWhen_(plan.whenAt) + " · host " + host.email);
+    });
+    var slot = new Date("2026-12-13T15:00:00-08:00").getTime();
+    rows_("Rooms").forEach(function (room) {
+      if (room.status === "cancelled" || !room.code || planNames[String(room.activity)]) return;
+      var at = new Date(room.when_at).getTime();
+      var past = !room.when_at || isNaN(at) || at <= Date.now();
+      if (!past && String(room.m1_started) !== "1") return;
+      if (!past) {
+        setCells_("Rooms", room._row, { m1_started: "" });
+        done.push(room.code + " can be joined again · " + room.activity);
+        return;
+      }
+      var whenAt = new Date(slot).toISOString();
+      slot += 24 * 60 * 60 * 1000;
+      setCells_("Rooms", room._row, { when_at: whenAt, when_text: prettyWhen_(whenAt), m1_started: "" });
+      done.push(room.code + " moved to " + prettyWhen_(whenAt) + " · " + room.activity);
+    });
+    return done;
+  });
+  Logger.log(notes.join("\n"));
+  return notes.join("\n");
+}
+
+function decemberHost_() {
+  var users = rows_("Users");
+  var email = FOUNDING_EMAILS.filter(function (e) {
+    return users.some(function (u) { return normEmail_(u.email) === e && String(u.name || "").trim().length >= 2; });
+  })[0];
+  if (!email) throw new Error("Sign in on the site once before running openDecember.");
+  var user = users.filter(function (u) { return normEmail_(u.email) === email; })[0];
+  return {
+    email: email, name: String(user.name).trim(), from: user.from_place || "",
+    standing: user.standing || "undergrad", home: user.home || "dish", secret: "",
+    answers: parseAnswers_(user.answers_json),
+  };
 }
 
 function doGet() {
@@ -128,6 +199,7 @@ function createRoom_(r) {
   var profile = profile_(r);
   requireUser_(r, profile.email);
   if (!canHost_(profile.email)) throw new Error("Sit down at three meetings before you host.");
+  assertNoTimeConflict_(profile.email, whenAt, "");
   upsertUser_(profile);
   var code = newCode_();
   var roomId = Utilities.getUuid();
@@ -166,6 +238,7 @@ function join_(r) {
   }
   if (meetingOpen_(room)) throw new Error("This table already started.");
   if (active.length >= MAX_PEOPLE) throw new Error("This table is full.");
+  assertNoTimeConflict_(profile.email, room.when_at, room.room_id);
   if (existing) {
     setCells_("People", existing._row, { left: "" });
     var backToken = Utilities.getUuid();
@@ -628,6 +701,24 @@ function cleanAnswers_(raw) {
 
 function activePeople_(roomId) {
   return rows_("People").filter(function (p) { return p.room_id === roomId && String(p.left) !== "1"; });
+}
+
+function timesConflict_(a, b) {
+  var ta = new Date(a).getTime();
+  var tb = new Date(b).getTime();
+  if (isNaN(ta) || isNaN(tb)) return false;
+  return Math.abs(ta - tb) < MEET_SPAN;
+}
+
+function assertNoTimeConflict_(email, whenAt, exceptRoomId) {
+  var who = normEmail_(email);
+  rows_("People").forEach(function (p) {
+    if (normEmail_(p.email) !== who || String(p.left) === "1") return;
+    if (exceptRoomId && p.room_id === exceptRoomId) return;
+    var room = rows_("Rooms").filter(function (x) { return x.room_id === p.room_id; })[0];
+    if (!room || room.status === "cancelled") return;
+    if (timesConflict_(room.when_at, whenAt)) throw new Error("You already have a table within two hours of this one.");
+  });
 }
 
 function isHost_(found) {

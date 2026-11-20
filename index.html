@@ -991,7 +991,7 @@ function TableScene({ seats, variant, caption }) {
   );
 }
 
-function GroupReveal({ game, personas, state, next, live, plan, session, onPack, onLeft }) {
+function GroupReveal({ game, personas, state, next, live, plan, session, onPack, onLeft, go }) {
   const you = { ...YOU, name: live ? (state.youName || "You") : "You", standing: state.standing || "undergrad", hook: state.hook || (live ? state.activity : "a boba crawl"), from: state.from || "" };
   const people = [you, ...personas];
   const activity = live ? activityOf(state.activity, state.place) : game.activities[0];
@@ -1019,6 +1019,7 @@ function GroupReveal({ game, personas, state, next, live, plan, session, onPack,
   );
   if (live && !personas.length) return (
     <Screen>
+      {go && <button type="button" onClick={() => go("events")} className="self-start font-semibold text-[var(--muted)] cursor-pointer min-h-[44px]">← Your tables</button>}
       <Chip>CODE {state.code}</Chip>
       <Title>Your table is open.</Title>
       <p className="text-lg text-[var(--muted)]">Share the code. The group name and what you have in common show up after a second person sits down.</p>
@@ -1034,6 +1035,7 @@ function GroupReveal({ game, personas, state, next, live, plan, session, onPack,
   );
   return (
     <Screen>
+      {live && go && <button type="button" onClick={() => go("events")} className="self-start font-semibold text-[var(--muted)] cursor-pointer min-h-[44px]">← Your tables</button>}
       <div className="flex items-center gap-2"><Chip>{live && ALLOW_GMAIL ? "Email verified" : "Verified Berkeley students"}</Chip>{live ? <span className="text-xs font-bold tracking-widest text-[var(--muted)]">CODE {state.code}</span> : <span className="text-xs text-[var(--muted)]">demo group</span>}</div>
       <Title>Your group, {game.groupName}</Title>
       <div className="rounded-3xl bg-[var(--coral)] text-white p-5">
@@ -2254,13 +2256,6 @@ function Field({ id, label, value, set, placeholder, maxLength = 40 }) {
   );
 }
 
-const DECEMBER_EVENTS = [
-  { emoji: "🥾", activity: "Hike to the Big C", when: "December", place: "California Memorial Stadium", whenAt: "2026-12-05T11:00" },
-  { emoji: "☕", activity: "Coffee", when: "December", place: "A café near campus", whenAt: "2026-12-05T15:00" },
-  { emoji: "🧋", activity: "Boba", when: "December", place: "A shop near Telegraph", whenAt: "2026-12-06T14:00" },
-  { emoji: "🧺", activity: "Picnic", when: "December", place: "Memorial Glade", whenAt: "2026-12-12T13:00" },
-];
-
 function ManageEvent({ table, userToken, onChanged }) {
   const [open, setOpen] = useState(false);
   const [activity, setActivity] = useState(table.activity || "");
@@ -2314,6 +2309,8 @@ function FindTables({ onBack, onHost, onJoin, userToken, answers, error }) {
   const [tables, setTables] = useState([]);
   const [manage, setManage] = useState(false);
   const [tick, setTick] = useState(0);
+  const [joining, setJoining] = useState("");
+  const joiningRef = useRef("");
   useEffect(() => {
     let stop = false;
     api("listTables", { userToken, answers: answers || {} })
@@ -2321,34 +2318,45 @@ function FindTables({ onBack, onHost, onJoin, userToken, answers, error }) {
       .catch(() => { if (!stop) setTables([]); });
     return () => { stop = true; };
   }, [userToken, tick]);
-  const opened = new Set(tables.map((t) => t.activity));
-  const plans = DECEMBER_EVENTS.filter((event) => !opened.has(event.activity));
+  const started = (t) => {
+    const at = new Date(t.when_at || "").getTime();
+    return !Number.isNaN(at) && at <= Date.now();
+  };
+  const span = 2 * 60 * 60 * 1000;
+  const mineTimes = tables.filter((t) => t.yours).map((t) => new Date(t.when_at).getTime()).filter((t) => !Number.isNaN(t));
+  const conflict = (at) => {
+    const stamp = new Date(at || "").getTime();
+    return !Number.isNaN(stamp) && mineTimes.some((bt) => Math.abs(stamp - bt) < span);
+  };
+  const yours = tables.filter((t) => t.yours);
+  const others = tables.filter((t) => !t.yours);
+  const join = async (code) => {
+    if (joiningRef.current) return;
+    joiningRef.current = code;
+    setJoining(code);
+    try { await onJoin(code); }
+    finally { joiningRef.current = ""; setJoining(""); }
+  };
+  const card = (t) => (
+    <div key={t.code} className="rounded-3xl bg-[var(--surface)] border border-[var(--line)] p-4 sm:p-5 shadow-[0_8px_0_var(--line)] flex flex-col gap-2">
+      <p className="rt-display text-2xl font-extrabold">{t.activity}</p>
+      <p className="text-[var(--muted)]">{t.when}<br />{t.place}</p>
+      <p className="font-bold">{t.full ? "Full" : `${t.seats} ${t.seats === 1 ? "seat" : "seats"} open`}</p>
+      {(t.people || []).map((p) => <span key={`${p.name}-${p.from}`} className="block">{p.name}{p.from ? ` · ${p.from}` : ""}</span>)}
+      {t.share && <p className="rounded-2xl bg-[#FFF6D8] px-3 py-2.5 font-semibold">{t.share}</p>}
+      {t.yours ? <Btn ghost onClick={() => join(t.code)}>{joining === t.code ? "Opening…" : "Open this table"}</Btn> : t.full ? null : started(t) ? <p className="text-sm font-semibold">This table already started.</p> : conflict(t.when_at) ? <p className="text-sm font-semibold">You already have a table within two hours of this one.</p> : <Btn onClick={() => join(t.code)}>{joining === t.code ? "Joining…" : "Join this table"}</Btn>}
+      {manage && <ManageEvent table={t} userToken={userToken} onChanged={() => setTick((n) => n + 1)} />}
+    </div>
+  );
   return (
     <Screen>
       <button onClick={onBack} className="self-start font-semibold text-[var(--muted)] cursor-pointer min-h-[44px]">← Back</button>
-      <Title>Events being hosted</Title>
-      <p className="text-lg text-[var(--muted)]">{manage ? "You can edit or delete any open event. Other people still join the ones that have a seat." : "Four small events in December. Open the one you are hosting, then change the day and time. After it is open, other people can join."}</p>
-      {tables.map((t) => (
-        <div key={t.code} className="rounded-3xl bg-[var(--surface)] border border-[var(--line)] p-4 sm:p-5 shadow-[0_8px_0_var(--line)] flex flex-col gap-2">
-          <p className="rt-display text-2xl font-extrabold">{t.activity}</p>
-          <p className="text-[var(--muted)]">{t.when}<br />{t.place}</p>
-          <p className="font-bold">{t.full ? "Full" : `${t.seats} ${t.seats === 1 ? "seat" : "seats"} open`}</p>
-          {(t.people || []).map((p) => <span key={`${p.name}-${p.from}`} className="block">{p.name}{p.from ? ` · ${p.from}` : ""}</span>)}
-          {t.share && <p className="rounded-2xl bg-[#FFF6D8] px-3 py-2.5 font-semibold">{t.share}</p>}
-          {t.yours ? <p className="text-sm font-semibold">You're already at this table.</p> : t.full ? null : <Btn onClick={() => onJoin(t.code)}>Join this table</Btn>}
-          {manage && <ManageEvent table={t} userToken={userToken} onChanged={() => setTick((n) => n + 1)} />}
-        </div>
-      ))}
-      {plans.map((event) => (
-        <div key={event.activity} className="rounded-3xl bg-[var(--surface)] border border-[var(--line)] p-4 sm:p-5 shadow-[0_8px_0_var(--line)] flex flex-col gap-2">
-          <Chip>December</Chip>
-          <p className="rt-display text-2xl font-extrabold">{event.emoji} {event.activity}</p>
-          <p className="text-[var(--muted)]">{event.when}<br />{event.place}</p>
-          <p className="text-sm text-[var(--muted)]">The host can change the time.</p>
-          <Btn onClick={() => onHost(event)}>Host this</Btn>
-        </div>
-      ))}
+      <Title>{yours.length ? "Your tables" : "Events being hosted"}</Title>
+      <p className="text-lg text-[var(--muted)]">{yours.length ? "Activities you have joined. Your seat stays if you open another one." : manage ? "You can edit or delete any open event. Other people still join the ones that have a seat." : "Tables that are already open. Join one that still has a seat."}</p>
       {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
+      {yours.map(card)}
+      {others.length > 0 && yours.length > 0 && <p className="text-xs font-bold uppercase tracking-widest text-[var(--muted)] mt-2">Other tables</p>}
+      {others.map(card)}
     </Screen>
   );
 }
@@ -2562,7 +2570,7 @@ function LiveGate({ initialCode, onJoined, onAccount }) {
         <Btn ghost onClick={() => { setError(""); setMode("join"); }}>Join with a code</Btn>
         <button type="button" onClick={() => { setError(""); setMode("find"); }} className="w-full rounded-2xl px-5 py-3.5 text-left border-2 border-[var(--blue)] bg-[var(--surface)] cursor-pointer">
           <span className="block rt-display font-extrabold text-lg">Let globuddy find your table</span>
-          <span className="block mt-0.5 text-sm font-medium text-[var(--muted)]">Four small events in December. The host can change the time.</span>
+          <span className="block mt-0.5 text-sm font-medium text-[var(--muted)]">Tables that are already open.</span>
         </button>
       </div>
     </Screen>
@@ -2909,7 +2917,7 @@ function App() {
     return next;
   });
   const scrollTop = () => { try { window.scrollTo(0, 0); } catch {} };
-  const go = (stage) => { setReview(""); setTab("table"); update((s) => ({ stage, view: "app", run: s.run + 1 })); scrollTop(); };
+  const go = (stage) => { setReview(""); setTab("table"); update((s) => ({ stage, view: "app", run: s.run + 1, gateError: "" })); scrollTop(); };
   const setView = (view) => { update({ view }); scrollTop(); };
   useEffect(() => {
     if (!LIVE || !session) return;
@@ -2963,12 +2971,24 @@ function App() {
     try { history.replaceState(null, "", url); } catch {}
     setState((s) => ({
       ...applyPack({ ...s, slot: "", nextActivity: "", meet3Pick: "", meet3PickActivity: "", guessText: "", contact: "", messages: data.messages || [] }, data),
-      live: true, stage: "reveal", view: "app", run: s.run + 1,
+      live: true, stage: "reveal", view: "app", run: s.run + 1, gateError: "",
       answers: body.answers, home: body.home, standing: body.standing, from: body.from || (data.you && data.you.from) || "",
       hook: data.room.activity, youName: (data.you && data.you.name) || body.name, isHost: body.mode === "host" || !!(data.you && data.you.is_host),
       m1: {}, vote: null, poked: false, intro: "", capsule: "", wish: "", bye: "",
     }));
     scrollTop();
+  };
+  const seatBody = () => ({
+    userToken: account && account.token, name: state.youName, email: account && account.email,
+    from: state.from, standing: state.standing, home: state.home, answers: state.answers || {}, secret: "",
+  });
+  const joinFromList = async (code) => {
+    try { await join({ ...seatBody(), mode: "join", code }); }
+    catch (e) { setState((s) => ({ ...s, gateError: e.message || "Could not join." })); }
+  };
+  const hostFromList = async (event) => {
+    try { await join({ ...seatBody(), mode: "host", activity: event.activity, place: event.place, whenAt: event.whenAt, when: formatWhen(event.whenAt) }); }
+    catch (e) { setState((s) => ({ ...s, gateError: e.message || "Could not open." })); }
   };
 
   const inNav = !!(state.live && session && state.stage !== "gate" && state.view === "app");
@@ -2990,6 +3010,7 @@ function App() {
   else if (inNav && tab === "you") screen = <YourSeats userToken={(account && account.token) || ""} />;
   else if (inNav && tab === "schedule") screen = <Schedule state={state} personas={personas} session={session} onPack={onPack} onReview={(key) => { setReview(key); setTab("table"); scrollTop(); }} onOpen={(stage) => { setReview(""); setTab("table"); go(stage); }} />;
   else if (inNav && review && stepState(review, state.stage) === "done") screen = <LookBack step={review} state={state} personas={personas} game={game} />;
+  else if (state.live && state.stage === "events") screen = <FindTables onBack={() => go("reveal")} userToken={(account && account.token) || ""} answers={state.answers} error={state.gateError} onJoin={joinFromList} onHost={hostFromList} />;
   else if (state.stage === "seats") screen = <YourSeats userToken={(account && account.token) || ""} onBack={() => go(session ? "reveal" : "gate")} onHost={session ? null : () => go("gate")} />;
   else if (state.live && state.stage === "gate") screen = <LiveGate initialCode={roomFromUrl()} onJoined={join} onAccount={setAccount} />;
   else if (state.stage === "onboarding") screen = <Onboarding onDone={(a, h, standing, hook) => { update((s) => ({ answers: a, home: h, standing, hook, stage: "reveal", m1: {}, vote: null, slot: null, poked: false, run: s.run + 1 })); scrollTop(); }} />;
@@ -3007,8 +3028,8 @@ function App() {
     <div className="flex-1 flex flex-col">
       <header className="sticky z-40 text-white" style={{ top: "env(safe-area-inset-top, 0px)", background: "var(--header)" }}>
         <div className="max-w-[560px] mx-auto gutter h-14 flex items-center justify-between gap-3">
-          <button onClick={() => { if (inNav) { setReview(""); setTab("table"); scrollTop(); } else go(state.live ? "gate" : "onboarding"); }} className="rt-display font-extrabold text-xl flex items-center gap-2 cursor-pointer text-white"><span aria-hidden="true">🍓</span>{APP_NAME}</button>
-          {inNav ? <button type="button" className="where" aria-haspopup="dialog" onClick={() => setSheet(true)}><span>{state.code ? `${state.code}, ` : ""}{looking ? looking.title : here.title}</span><span aria-hidden="true">▾</span></button> : account && state.stage !== "seats" ? <button type="button" onClick={() => go("seats")} className="text-sm font-semibold text-white cursor-pointer min-h-[44px]">Seats</button> : <span className="text-xs sm:text-sm font-semibold text-white/80 truncate">{where}</span>}
+          <button onClick={() => { if (state.live && session) { setSheet(false); go("events"); } else go(state.live ? "gate" : "onboarding"); }} className="rt-display font-extrabold text-xl flex items-center gap-2 cursor-pointer text-white"><span aria-hidden="true">🍓</span>{APP_NAME}</button>
+          {inNav ? <button type="button" className="where" aria-haspopup="dialog" onClick={() => setSheet(true)}><span>{state.stage === "events" ? "Your tables" : `${state.code ? `${state.code}, ` : ""}${looking ? looking.title : here.title}`}</span><span aria-hidden="true">▾</span></button> : account && state.stage !== "seats" ? <button type="button" onClick={() => go("seats")} className="text-sm font-semibold text-white cursor-pointer min-h-[44px]">Seats</button> : <span className="text-xs sm:text-sm font-semibold text-white/80 truncate">{where}</span>}
         </div>
       </header>
       {usingDemo && <div className="bg-[var(--gold)] text-[var(--on-gold)] text-sm text-center py-1.5 font-semibold gutter">Using demo answers. Do onboarding to use yours.</div>}
@@ -3021,7 +3042,7 @@ function App() {
         <nav className="nav-tabs" aria-label="Main">
           <div className="row3">
             {[["table", "🪑", "Table"], ["schedule", "🗓️", "Schedule"], ["you", "🙂", "You"]].map(([id, emoji, label]) => (
-              <button key={id} type="button" className="nav-tab" aria-current={tab === id ? "page" : undefined} onClick={() => { setTab(id); if (id !== "table") setReview(""); scrollTop(); }}>
+              <button key={id} type="button" className="nav-tab" aria-current={tab === id ? "page" : undefined} onClick={() => { if (id === "table" && state.stage === "events") { go("reveal"); return; } setTab(id); if (id !== "table") setReview(""); scrollTop(); }}>
                 <span className="e" aria-hidden="true">{emoji}</span>{label}
                 {id === "schedule" && badge && <span className="nav-badge">{badge}</span>}
               </button>
