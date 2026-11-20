@@ -1,8 +1,8 @@
 /**
- * GluBuddy — Google Apps Script backend.
+ * GloBuddy — Google Apps Script backend.
  *
  * 貼到現有試算表的 Apps Script，存檔，選 setup 按執行，授權。
- * 試算表如果還叫 Strawberry data，在 Google 裡把名稱改成 GluBuddy。
+ * 試算表如果還叫 Strawberry data，在 Google 裡把名稱改成 GloBuddy。
  * 然後：部署 → 管理部署作業 → 編輯現在這個部署 → 新版本。網址不要換。
  * 執行身分：我。誰可以存取：所有人。
  * 把結尾是 /exec 的網址貼回 index.html 的 API_URL。
@@ -148,7 +148,7 @@ function decemberHost_() {
 }
 
 function doGet() {
-  return json_({ ok: true, app: "GluBuddy" });
+  return json_({ ok: true, app: "GloBuddy" });
 }
 
 function doPost(e) {
@@ -419,10 +419,10 @@ function icebreaker_(r) {
   return made;
 }
 
-/** Run once from the editor to allow GluBuddy to send email. */
+/** Run once from the editor to allow GloBuddy to send email. */
 function testMail() {
   var email = Session.getActiveUser().getEmail();
-  MailApp.sendEmail(email, "GluBuddy mail test", "Mail from GluBuddy works.");
+  MailApp.sendEmail(email, "GloBuddy mail test", "Mail from GloBuddy works.");
   Logger.log("Sent to " + email);
 }
 
@@ -603,7 +603,7 @@ function sendCode_(r) {
   cache.put("code:" + email, code, 600);
   cache.put("tries:" + email, "0", 600);
   cache.put("sent:" + email, "1", 60);
-  MailApp.sendEmail(email, "Your GluBuddy code", "Your code is " + code + ".\n\nIt expires in 10 minutes. If you did not ask for this, ignore this email.");
+  MailApp.sendEmail(email, "Your GloBuddy code", "Your code is " + code + ".\n\nIt expires in 10 minutes. If you did not ask for this, ignore this email.");
   return { sent: true };
 }
 
@@ -899,7 +899,7 @@ function planNote_(room, kind) {
   var what = (kind === "m2" || kind === "soon2") ? (room.meet2_activity || room.activity)
     : (kind === "m3" || kind === "soon3") ? (room.meet3_activity || room.activity)
     : room.activity;
-  var body = "See you " + when + ".\n" + (what || "") + (room.place ? "\n" + room.place : "") + "\n\nOpen GluBuddy at that time. This email is your reminder.";
+  var body = "See you " + when + ".\n" + (what || "") + (room.place ? "\n" + room.place : "") + "\n\nOpen GloBuddy at that time. This email is your reminder.";
   return { when: when, body: body };
 }
 
@@ -907,7 +907,7 @@ function mailPeople_(room, people, kind) {
   var note = planNote_(room, kind);
   (people || []).forEach(function (p) {
     if (!p.email) return;
-    try { MailApp.sendEmail(p.email, "GluBuddy: see you " + note.when, note.body); } catch (e) {}
+    try { MailApp.sendEmail(p.email, "GloBuddy: see you " + note.when, note.body); } catch (e) {}
   });
 }
 

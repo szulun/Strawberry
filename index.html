@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>GluBuddy</title>
+<title>GloBuddy</title>
 <script>
 /* First visit plays intro_c.html. A room link, a saved sign-in, or a seen flag skips it. */
 (function () {
@@ -128,7 +128,7 @@ button:focus-visible, textarea:focus-visible { outline: 3px solid var(--gold); o
 </head>
 <body>
 
-<div id="rt-root"><p class="gutter" style="padding-block:24px;color:var(--muted)">Loading GluBuddy…</p></div>
+<div id="rt-root"><p class="gutter" style="padding-block:24px;color:var(--muted)">Loading GloBuddy…</p></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
@@ -143,7 +143,7 @@ const { useState, useEffect, useRef, useMemo } = React;
 // CONTENT — edit freely. Everything the app shows is pre-written here.
 // =====================================================================
 
-const APP_NAME = "GluBuddy";
+const APP_NAME = "GloBuddy";
 function track(name) {
   try { if (window.posthog) window.posthog.capture(name); } catch (e) {}
 }
@@ -1998,7 +1998,7 @@ function ChatReady({ game, personas, live, code, state, update, onLeft, session,
   const [contact, setContact] = useState(state?.contact || "");
   const you = { ...YOU, name: state?.youName || "You" };
   const people = [you, ...personas];
-  const link = live && code ? `${location.origin}${location.pathname}?room=${code}` : `GluBuddy.app/chat/${slug(game.groupName)}`;
+  const link = live && code ? `${location.origin}${location.pathname}?room=${code}` : `GloBuddy.app/chat/${slug(game.groupName)}`;
   if (live) {
     return (
       <Screen>
@@ -2217,14 +2217,22 @@ function DemoNav({ state, go, setView, reset, toggleFallback }) {
 }
 
 function shareLines(game) {
-  const lines = [];
+  const found = [];
   (game.byCard || []).forEach((d) => {
     if (!d.yours || d.yours.names.length < 2) return;
     const others = d.yours.names.filter((n) => n !== "You");
     if (!others.length) return;
-    lines.push(`You and ${others.join(" and ")} both like ${d.yours.option.label}.`);
+    found.push({ who: others.join(" and "), label: d.yours.option.label });
   });
-  return lines.slice(0, 3);
+  const top = found.slice(0, 3);
+  if (!top.length) return [];
+  const who = top[0].who;
+  if (top.every((item) => item.who === who)) {
+    const labels = top.map((item) => item.label);
+    const list = labels.length === 1 ? labels[0] : labels.length === 2 ? `${labels[0]} and ${labels[1]}` : `${labels.slice(0, -1).join(", ")}, and ${labels[labels.length - 1]}`;
+    return [`You and ${who} both like ${list}.`];
+  }
+  return top.map((item) => `You and ${item.who} both like ${item.label}.`);
 }
 function loadUser() {
   const s = store.get(USER_KEY, null);
@@ -2573,7 +2581,7 @@ function LiveGate({ initialCode, onJoined, onAccount }) {
         {hosting && hosting.canHost === false ? <button type="button" onClick={lockedHost} className={`w-full min-h-[56px] rounded-2xl px-5 py-3 border-2 border-dashed border-[var(--line)] text-[var(--muted)] font-semibold cursor-pointer ${shake ? "shake" : ""}`} onAnimationEnd={() => setShake(false)}>Host a table<span className="block text-sm font-medium">Opens after three meetings.</span></button> : <Btn onClick={() => { setError(""); setMode("host"); }}>Host a table</Btn>}
         <Btn ghost onClick={() => { setError(""); setMode("join"); }}>Join with a code</Btn>
         <button type="button" onClick={() => { setError(""); setMode("find"); }} className="w-full rounded-2xl px-5 py-3.5 text-left border-2 border-[var(--blue)] bg-[var(--surface)] cursor-pointer">
-          <span className="block rt-display font-extrabold text-lg">Let GluBuddy find your table</span>
+          <span className="block rt-display font-extrabold text-lg">Let GloBuddy find your table</span>
           <span className="block mt-0.5 text-sm font-medium text-[var(--muted)]">Tables that are already open.</span>
         </button>
       </div>
@@ -2708,7 +2716,7 @@ function icsHref(n, item) {
   const stamp = (dt) => new Date(dt).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
   const start = new Date(item.at);
   const end = new Date(start.getTime() + 2 * 3600000);
-  const body = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//GluBuddy//EN", "BEGIN:VEVENT", `UID:${item.code || "table"}-m${n}@GluBuddy`, `DTSTAMP:${stamp(new Date())}`, `DTSTART:${stamp(start)}`, `DTEND:${stamp(end)}`, `SUMMARY:GluBuddy meeting ${n}: ${item.activity || "Meetup"}`, `LOCATION:${item.place || ""}`, "END:VEVENT", "END:VCALENDAR"].join("\r\n");
+  const body = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//GloBuddy//EN", "BEGIN:VEVENT", `UID:${item.code || "table"}-m${n}@GloBuddy`, `DTSTAMP:${stamp(new Date())}`, `DTSTART:${stamp(start)}`, `DTEND:${stamp(end)}`, `SUMMARY:GloBuddy meeting ${n}: ${item.activity || "Meetup"}`, `LOCATION:${item.place || ""}`, "END:VEVENT", "END:VCALENDAR"].join("\r\n");
   return "data:text/calendar;charset=utf-8," + encodeURIComponent(body);
 }
 function stripPeople(state, personas, kind) {
@@ -2831,7 +2839,7 @@ function Schedule({ state, personas, session, onPack, onReview, onOpen }) {
         {away && <p className="rounded-2xl bg-[var(--bg)] px-4 py-3">You're sitting this one out. The others still meet.</p>}
         {next.fixed ? (
           <div className="grid grid-cols-2 gap-3">
-            <a className="min-h-[50px] rounded-2xl border-2 border-[var(--line)] flex items-center justify-center font-semibold" href={icsHref(next.n, { ...next, code: state.code })} download={`GluBuddy-meeting-${next.n}.ics`}>Add to calendar</a>
+            <a className="min-h-[50px] rounded-2xl border-2 border-[var(--line)] flex items-center justify-center font-semibold" href={icsHref(next.n, { ...next, code: state.code })} download={`GloBuddy-meeting-${next.n}.ics`}>Add to calendar</a>
             <a className="min-h-[50px] rounded-2xl border-2 border-[var(--line)] flex items-center justify-center font-semibold" target="_blank" rel="noopener" href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${next.place || next.activity} Berkeley`)}`}>Directions</a>
           </div>
         ) : <Btn onClick={() => onOpen(next.open)}>{next.kind ? `Answer for meeting ${next.n}` : "Suggest a time"}</Btn>}
@@ -2896,7 +2904,7 @@ function App() {
   const [state, setState] = useState(() => {
     if (!LIVE) return { ...INITIAL, ...store.get(STATE_KEY, {}), view: initialView() };
     const saved = loadSession() ? store.get(STATE_KEY, {}) : {};
-    const stage = loadSession() ? (saved.stage && saved.stage !== "onboarding" && saved.stage !== "gate" && saved.stage !== "schedule" && saved.stage !== "seats" ? saved.stage : "reveal") : "gate";
+    const stage = loadSession() ? "events" : "gate";
     return { ...INITIAL, ...saved, live: true, view: "app", stage };
   });
   useEffect(() => store.set(STATE_KEY, state), [state]);
@@ -2938,7 +2946,14 @@ function App() {
         if (stop) return;
         store.remove(SESSION_KEY);
         setSession(null);
-        setState((s) => ({ ...INITIAL, live: true, stage: "gate", run: s.run + 1, gateError: e.message }));
+        const msg = String((e && e.message) || "");
+        const gone = msg.indexOf("cancelled") >= 0 || msg.indexOf("not in that table") >= 0;
+        setState((s) => ({
+          ...INITIAL, live: true, run: s.run + 1,
+          stage: gone && loadUser() ? "events" : "gate",
+          gateError: gone ? "" : msg,
+          answers: s.answers, home: s.home, standing: s.standing, from: s.from, youName: s.youName,
+        }));
       }
     };
     pull();
@@ -3100,7 +3115,7 @@ ReactDOM.createRoot(document.getElementById("rt-root")).render(<App />);
     var pre = document.createElement("pre");
     pre.className = "gutter";
     pre.style.cssText = "color:var(--danger);white-space:pre-wrap;font-size:13px;padding-block:24px";
-    pre.textContent = "GluBuddy failed to start: " + (e && e.message || e);
+    pre.textContent = "GloBuddy failed to start: " + (e && e.message || e);
     root.appendChild(pre);
   }
 })();
