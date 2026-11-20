@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>GloBuddy</title>
 <script>
-/* First visit plays intro_c.html. A room link, a saved sign-in, or a seen flag skips it. */
+/* First visit plays intro.html. A room link, a saved sign-in, or a seen flag skips it. */
 (function () {
   try {
     var q = new URLSearchParams(location.search);
@@ -19,7 +19,7 @@
     if (localStorage.getItem("globuddy.intro.v1")) return;
     if (localStorage.getItem("globuddy.user.v1")) return;
     if (localStorage.getItem("globuddy.session.v1")) return;
-    location.replace("intro_c.html");
+    location.replace("intro.html");
   } catch (e) {}
 })();
 </script>
