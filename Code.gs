@@ -56,6 +56,14 @@ var CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 var ALLOW_GMAIL = true;
 var MAX_PEOPLE = 6;
 var WEEKLY_CAP = 30;
+// Fixed weekend clubs. Same clock time every week. No people are added until someone joins.
+var WEEKLY_CLUBS = [
+  { activity: "Running", place: "Memorial Glade", whenAt: "2026-11-28T09:00:00-08:00" },
+  { activity: "Badminton", place: "A court near campus", whenAt: "2026-11-28T14:00:00-08:00" },
+  { activity: "Bouldering", place: "A gym near campus", whenAt: "2026-11-28T18:00:00-08:00" },
+  { activity: "Hiking", place: "California Memorial Stadium", whenAt: "2026-11-29T10:00:00-08:00" },
+  { activity: "Language exchange", place: "A café near campus", whenAt: "2026-11-29T15:00:00-08:00" },
+];
 var MEET_SPAN = 2 * 60 * 60 * 1000;
 var COLORS = ["#E2553A", "#1E9A60", "#6A4BE8", "#0E7490", "#C2410C", "#7C3AED"];
 
@@ -407,6 +415,41 @@ function leaveRoom_(r) {
   return { left: true };
 }
 
+function weeklyClubExists_(rooms, activity) {
+  return rooms.some(function (x) {
+    return x.status !== "cancelled" && String(x.weekly) === "1" && String(x.activity) === activity;
+  });
+}
+
+function ensureWeeklyClubs_() {
+  var rooms = rows_("Rooms");
+  var missing = WEEKLY_CLUBS.filter(function (plan) { return !weeklyClubExists_(rooms, plan.activity); });
+  if (!missing.length) return rooms;
+  lock_(function () {
+    var again = rows_("Rooms");
+    missing.forEach(function (plan) {
+      if (weeklyClubExists_(again, plan.activity)) return;
+      var whenAt = iso_(plan.whenAt);
+      append_("Rooms", {
+        room_id: Utilities.getUuid(),
+        code: newCode_(),
+        activity: plan.activity,
+        when_text: prettyWhen_(whenAt),
+        place: plan.place,
+        created_at: now_(),
+        host_person_id: "",
+        when_at: whenAt,
+        status: "open",
+        weekly: "1",
+        series_id: Utilities.getUuid(),
+        series_host: FOUNDING_EMAILS[0],
+      });
+    });
+    SpreadsheetApp.flush();
+  });
+  return rows_("Rooms");
+}
+
 function listTables_(r) {
   var user = userByToken_(r.userToken);
   var manage = isFounding_(user.email);
@@ -421,7 +464,7 @@ function listTables_(r) {
   });
   var tables = [];
   var series = {};
-  rows_("Rooms").forEach(function (room) {
+  ensureWeeklyClubs_().forEach(function (room) {
     if (room.status === "cancelled" || !room.code) return;
     if (String(room.weekly) === "1" && room.series_id) {
       if (!series[room.series_id]) series[room.series_id] = [];
@@ -481,8 +524,11 @@ function listTables_(r) {
       share: mineRoom ? shareLine_(mine, shownPeople, user.email) : "",
     });
   });
-  tables.sort(function (a, b) { return String(a.when_at || "9999").localeCompare(String(b.when_at || "9999")); });
-  return { tables: tables.slice(0, 12), manage: manage };
+  var weeklyTables = tables.filter(function (t) { return t.weekly; });
+  var onceTables = tables.filter(function (t) { return !t.weekly; });
+  weeklyTables.sort(function (a, b) { return String(a.when_at || "9999").localeCompare(String(b.when_at || "9999")); });
+  onceTables.sort(function (a, b) { return String(a.when_at || "9999").localeCompare(String(b.when_at || "9999")); });
+  return { tables: weeklyTables.concat(onceTables).slice(0, 12), manage: manage };
 }
 
 function postMessage_(r) {

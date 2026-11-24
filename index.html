@@ -457,7 +457,6 @@ const PREMEET_CHAT = [
   { from: "Jordan", text: "I'm in for the crawl. I can walk from campus." },
 ];
 const ACTIVITY_HOOKS = ["Boba crawl", "Cook together", "Karaoke", "Hike", "Escape room", "Picnic"];
-const WEEKLY_ACTIVITIES = ["Badminton", "Hiking", "Bouldering", "Language exchange", "Running", "Picnic"];
 // Round 2 answers do not live in this file. Paste a Google Form formResponse URL and the entry ids.
 // Leave CHECKIN_FORM empty during the demo; answers stay in this browser until the form is connected.
 const CHECKIN_FORM = "";
@@ -2511,7 +2510,7 @@ function LiveGate({ initialCode, onJoined, onAccount }) {
   const [user, setUser] = useState(savedUser);
   const [pin, setPin] = useState("");
   const [mode, setMode] = useState(initialCode ? "join" : "");
-  const [form, setForm] = useState({ name: "", email: savedUser ? savedUser.email : "", from: "", standing: "", activity: "", when: "", whenAt: "", place: "", code: initialCode || "", weekly: false });
+  const [form, setForm] = useState({ name: "", email: savedUser ? savedUser.email : "", from: "", standing: "", activity: "", when: "", whenAt: "", place: "", code: initialCode || "" });
   const [cards, setCards] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -2655,20 +2654,13 @@ function LiveGate({ initialCode, onJoined, onAccount }) {
       <Title>{mode === "host" ? "Host a table" : "Join a table"}</Title>
       {mode === "host" ? (
         <>
-          <p className="font-semibold">Every week</p>
-          <p className="text-sm text-[var(--muted)]">Same time each week. Whoever is free comes. Up to 30 people, sitting in tables of 6. Next week can be different people.</p>
-          <div className="flex flex-wrap gap-2">
-            {WEEKLY_ACTIVITIES.map((a) => (
-              <button key={a} onClick={() => setForm((f) => ({ ...f, activity: a, weekly: true }))} className={`min-h-[44px] rounded-full px-4 py-2 text-sm font-semibold border-2 cursor-pointer ${form.weekly && form.activity === a ? "bg-[var(--coral)] text-white border-[var(--coral)]" : "bg-[var(--surface)] border-[var(--line)]"}`}>{a}</button>
-            ))}
-          </div>
-          <p className="font-semibold">Or one time</p>
+          <p className="font-semibold">The activity for this table</p>
           <div className="flex flex-wrap gap-2">
             {ACTIVITY_HOOKS.map((a) => (
-              <button key={a} onClick={() => setForm((f) => ({ ...f, activity: a, weekly: false }))} className={`min-h-[44px] rounded-full px-4 py-2 text-sm font-semibold border-2 cursor-pointer ${!form.weekly && form.activity === a ? "bg-[var(--coral)] text-white border-[var(--coral)]" : "bg-[var(--surface)] border-[var(--line)]"}`}>{a}</button>
+              <button key={a} onClick={() => set("activity")(a)} className={`min-h-[44px] rounded-full px-4 py-2 text-sm font-semibold border-2 cursor-pointer ${form.activity === a ? "bg-[var(--coral)] text-white border-[var(--coral)]" : "bg-[var(--surface)] border-[var(--line)]"}`}>{a}</button>
             ))}
           </div>
-          <Field id="activity" label="Or name a one-time activity" value={form.activity} set={(v) => setForm((f) => ({ ...f, activity: v, weekly: WEEKLY_ACTIVITIES.indexOf(v) >= 0 }))} placeholder="Boba crawl" />
+          <Field id="activity" label="Or name it" value={form.activity} set={set("activity")} placeholder="Boba crawl" />
           <label className="flex flex-col gap-1 font-semibold">When
             <input id="when" type="datetime-local" value={form.whenAt} onChange={(e) => set("whenAt")(e.target.value)} className="w-full rounded-2xl border-2 border-[var(--line)] bg-[var(--bg)] p-3 text-lg font-normal text-[var(--ink)]" />
           </label>
