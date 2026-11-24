@@ -262,7 +262,14 @@ function applyPack(s, data) {
     guessVerdict: you.guess_verdict || s.guessVerdict || "",
     missionTarget: you.mission_target != null ? you.mission_target : (s.missionTarget || ""),
     missionTopic: you.mission_topic != null ? you.mission_topic : (s.missionTopic || ""),
+    ratings: mergeRatings(s.ratings, you.ratings),
   };
+}
+function mergeRatings(local, remote) {
+  if (!remote) return local || {};
+  const prev = local || {};
+  const pick = (key) => (remote[key] && remote[key].mood) ? remote[key] : (prev[key] && prev[key].mood ? prev[key] : remote[key] || null);
+  return { m1: pick("m1"), m2: pick("m2") };
 }
 // 8 onboarding cards, 4 options each.
 // Every option belongs to one of the card's 2 "vibes" (fam "a" or "b").
@@ -1649,7 +1656,7 @@ function Meeting1({ game, personas, update, next, live, state, session, onPack }
         <Title dark big>That's a wrap on meeting 1.</Title>
         <p className="text-white/80 text-lg max-w-[40ch]">The lines stay sealed. Meeting 2 is where they open.</p>
         {!live && <p className="rt-display text-2xl font-extrabold">{personas.map((p) => LEFTOVER[p.name].bye).join(" · ")}</p>}
-        <Btn onClick={next}>{live ? "Plan meeting 2 →" : "Later that evening… →"}</Btn>
+        <Btn onClick={next}>{live ? "How was this table? →" : "Later that evening… →"}</Btn>
       </div>
     </TableShell>
   );
@@ -1791,10 +1798,56 @@ function LiveWait({ state, place, onNext, onBack, session, onPack }) {
   );
 }
 
+const TABLE_RATINGS = [
+  { mood: "down", emoji: "👎", label: "This didn't work" },
+  { mood: "ok", emoji: "👌", label: "It was okay" },
+  { mood: "up", emoji: "👍", label: "I'd sit here again" },
+];
+function TableRating({ kind, session, onSaved, onBack }) {
+  const [mood, setMood] = useState("");
+  const [note, setNote] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    if (!mood) return setError("Pick how this table was.");
+    if (!liveSession(session)) return setError("Join the table again, then save.");
+    setBusy(true); setError("");
+    try {
+      const data = await api("rate", { code: session.code, token: session.token, kind, mood, note: note.trim() });
+      onSaved(data && data.room ? data : { mood, note: note.trim() });
+    } catch (e) {
+      setBusy(false);
+      setError(e.message || "Could not save.");
+    }
+  };
+  return (
+    <Screen>
+      <Chip>{kind === "m2" ? "After meeting 2" : "After meeting 1"}</Chip>
+      <Title>How was this table?</Title>
+      <div className="grid grid-cols-3 gap-2">
+        {TABLE_RATINGS.map((item) => (
+          <button key={item.mood} type="button" aria-pressed={mood === item.mood} onClick={() => { setMood(item.mood); setError(""); }} className={`min-h-[96px] rounded-2xl border-2 px-2 py-3 flex flex-col items-center justify-center gap-1 cursor-pointer ${mood === item.mood ? "bg-[var(--blue)] text-white border-[var(--blue)]" : "bg-[var(--surface)] text-[var(--ink)] border-[var(--line)]"}`}>
+            <span className="text-3xl" aria-hidden="true">{item.emoji}</span>
+            <span className="text-sm font-semibold text-center leading-tight">{item.label}</span>
+          </button>
+        ))}
+      </div>
+      <label htmlFor={`better-${kind}`} className="font-semibold text-lg">How can we do better? <span className="text-sm font-normal text-[var(--muted)]">You can leave this blank.</span></label>
+      <textarea id={`better-${kind}`} rows={2} maxLength={160} value={note} onChange={(e) => setNote(e.target.value)} placeholder="One sentence." className="w-full rounded-2xl border-2 border-[var(--line)] bg-[var(--surface)] p-3 text-lg text-[var(--ink)] resize-none" />
+      <Btn onClick={save}>{busy ? "Saving…" : "Save"}</Btn>
+      {error && <p className="text-sm text-[var(--danger)] -mt-3">{error}</p>}
+      {onBack && <button type="button" onClick={onBack} className="self-start font-semibold text-[var(--muted)] cursor-pointer min-h-[44px]">Back to the table</button>}
+    </Screen>
+  );
+}
+function rated(state, kind) {
+  return !!(state.ratings && state.ratings[kind] && state.ratings[kind].mood);
+}
 function AfterMeeting1({ game, personas, state, update, next, live, session, onPack, go, onLeft }) {
   const [copied, setCopied] = useState("");
   const [error, setError] = useState("");
   const [seePlan, setSeePlan] = useState(false);
+  if (live && !rated(state, "m1")) return <TableRating kind="m1" session={session} onBack={() => go("reveal")} onSaved={(data) => { if (data && data.room) onPack(data); else update((s) => ({ ratings: mergeRatings(s.ratings, { m1: { mood: data.mood, note: data.note || "" } }) })); }} />;
   if (live && state.meet2Ok === "no" && !seePlan) return (
     <Screen>
       <Chip>After meeting 1</Chip>
@@ -1978,7 +2031,7 @@ function Meeting2({ game, personas, state, next, live, go, session, onPack }) {
         <p className="text-white/80 text-lg max-w-[40ch]">{act.title} is not a fresh start. Ask about what you learned last time, then let it go wherever it goes.</p>
         {live && <p className="text-white/75 text-base max-w-[42ch]">When you leave this page, the next screen is a short check-in. After you send it, you can share Instagram or WhatsApp, host a new table, or pick a time for meeting 3.</p>}
         <Btn ghost dark onClick={() => setBox(true)}>🎲 Need a nudge? Open the mini-game box</Btn>
-        <Btn onClick={next}>We're done, time to check in →</Btn>
+        <Btn onClick={next}>{live ? "How was this table? →" : "We're done, time to check in →"}</Btn>
       </div>
     </TableShell>
   );
@@ -2068,7 +2121,7 @@ function ChatReady({ game, personas, live, code, state, update, onLeft, session,
   );
 }
 
-function CheckIn({ game, personas, live, code, sessionCode, token, state, update, onLeft, session, onPack }) {
+function CheckIn({ game, personas, live, code, sessionCode, token, state, update, onLeft, session, onPack, go }) {
   const [again, setAgain] = useState(null);
   const [third, setThird] = useState(null);
   const [reasons, setReasons] = useState([]);
@@ -2102,6 +2155,7 @@ function CheckIn({ game, personas, live, code, sessionCode, token, state, update
     }
     setSaved(true);
   };
+  if (live && !rated(state, "m2")) return <TableRating kind="m2" session={session} onBack={() => (go ? go("reveal") : onLeft())} onSaved={(data) => { if (data && data.room) onPack(data); else update((s) => ({ ratings: mergeRatings(s.ratings, { m2: { mood: data.mood, note: data.note || "" } }) })); }} />;
   if (saved) return <ChatReady game={game} personas={personas} live={live} code={code} state={state} update={update} onLeft={onLeft} session={session} onPack={onPack} />;
   return (
     <Screen>
@@ -3039,7 +3093,7 @@ function App() {
   else if (state.stage === "after1") screen = <AfterMeeting1 {...props} />;
   else if (state.stage === "between") screen = <BetweenMeetings {...props} />;
   else if (state.stage === "meeting2") screen = <Meeting2 {...props} />;
-  else screen = <CheckIn game={game} personas={personas} live={!!state.live} code={state.code} sessionCode={session?.code} token={session?.token} state={state} update={update} onLeft={onLeft} session={session} onPack={onPack} />;
+  else screen = <CheckIn game={game} personas={personas} live={!!state.live} code={state.code} sessionCode={session?.code} token={session?.token} state={state} update={update} onLeft={onLeft} session={session} onPack={onPack} go={go} />;
 
   const usingDemo = !LIVE && !state.answers && state.stage !== "onboarding" && state.view === "app";
   const where = state.stage === "gate" ? "You" : state.stage === "seats" ? "Your seats" : state.stage === "schedule" ? "Schedule" : state.view === "app" ? `${Math.max(stageIndex, 0) + 1}/${STAGES.length} · ${STAGES[stageIndex]?.[1] || ""}` : state.view === "results" ? "Results" : "Tests";

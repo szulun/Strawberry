@@ -17,6 +17,7 @@ var TABS = {
   People: ["room_id", "person_id", "joined_at", "name", "email", "from_place", "standing", "hook", "home", "secret", "answers_json", "intro", "capsule", "wish", "vote", "slot", "bye", "contact", "guess_target", "guess_topic", "guess_text", "guess_verdict", "left", "next_activity", "meet3_at", "meet3_activity", "meet2_ok", "meet3_ok", "mission_target", "mission_topic"],
   Tokens: ["room_id", "person_id", "token", "is_host"],
   Checkins: ["room_id", "person_id", "name", "again", "met", "reasons", "connected", "why", "group_name", "at", "third"],
+  Ratings: ["room_id", "person_id", "kind", "mood", "note", "at"],
   Users: ["email", "name", "from_place", "standing", "home", "answers_json", "updated_at"],
   UserTokens: ["email", "token", "created_at"],
   Messages: ["room_id", "message_id", "person_id", "name", "text", "at"],
@@ -170,6 +171,7 @@ function route_(r) {
     case "getState": return getState_(r);
     case "save": return lock_(function () { return save_(r); });
     case "checkin": return lock_(function () { return checkin_(r); });
+    case "rate": return lock_(function () { return rate_(r); });
     case "icebreaker": return icebreaker_(r);
     case "updateRoom": return lock_(function () { return updateRoom_(r); });
     case "cancelRoom": return lock_(function () { return cancelRoom_(r); });
@@ -504,6 +506,40 @@ function yesNo_(value) {
   if (value === true || value === "Yes" || value === "true") return "Yes";
   if (value === false || value === "No" || value === "false") return "No";
   return "";
+}
+
+function rate_(r) {
+  var found = find_(r.code, r.token);
+  var kind = r.kind === "m2" ? "m2" : r.kind === "m1" ? "m1" : "";
+  if (!kind) throw new Error("Pick the meeting you just finished.");
+  var mood = String(r.mood || "");
+  if (mood !== "down" && mood !== "ok" && mood !== "up") throw new Error("Pick how this table was.");
+  var note = clip_(r.note, 160);
+  var existing = rows_("Ratings").filter(function (x) {
+    return x.room_id === found.room.room_id && x.person_id === found.person.person_id && x.kind === kind;
+  })[0];
+  var row = {
+    room_id: found.room.room_id,
+    person_id: found.person.person_id,
+    kind: kind,
+    mood: mood,
+    note: note,
+    at: now_(),
+  };
+  if (existing) setCells_("Ratings", existing._row, row);
+  else append_("Ratings", row);
+  SpreadsheetApp.flush();
+  return pack_(found.room, found.person.person_id);
+}
+
+function ratingsFor_(roomId, personId) {
+  var out = { m1: null, m2: null };
+  rows_("Ratings").forEach(function (x) {
+    if (x.room_id !== roomId || x.person_id !== personId) return;
+    if (x.kind !== "m1" && x.kind !== "m2") return;
+    out[x.kind] = { mood: x.mood, note: x.note || "" };
+  });
+  return out;
 }
 
 function checkin_(r) {
@@ -1057,6 +1093,7 @@ function pack_(room, viewerId) {
       meet3_ok: viewer.meet3_ok || "",
       mission_target: viewer.mission_target || "",
       mission_topic: viewer.mission_topic || "",
+      ratings: ratingsFor_(room.room_id, viewer.person_id),
       is_host: room.host_person_id === viewer.person_id,
       can_manage: isFounding_(viewer.email),
     },
