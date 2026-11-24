@@ -1036,7 +1036,7 @@ function GroupReveal({ game, personas, state, next, live, plan, session, onPack,
         <p className="rt-display text-3xl font-extrabold mt-1">{activity.emoji} {activity.title}</p>
         <p className="mt-1 text-white/90">{place}</p>
         <p className="mt-1 text-white/90">{formatWhen(state.whenAt, when)}</p>
-        {state.weekly && <p className="mt-2 text-white/90">This week you sit with this table. Next week, whoever is free can sit somewhere else.</p>}
+        {state.weekly && <p className="mt-2 text-white/90">You joined this club. This week you sit at this table. Next week, that table can be different people.</p>}
       </div>
       {shareBlock}
       <TableTools state={state} session={session} onPack={onPack} onLeft={onLeft} />
@@ -1051,7 +1051,7 @@ function GroupReveal({ game, personas, state, next, live, plan, session, onPack,
         <p className="text-xs font-bold uppercase tracking-widest text-white/80">The hook</p>
         <p className="rt-display text-3xl font-extrabold mt-1">{activity.emoji} {activity.title}</p>
         <p className="mt-1 text-white/90">{activity.place}</p>
-        {state.weekly && <p className="mt-2 text-white/90">This week you sit with this table. Next week, whoever is free can sit somewhere else.</p>}
+        {state.weekly && <p className="mt-2 text-white/90">You joined this club. This week you sit at this table. Next week, that table can be different people.</p>}
       </div>
       <div className={`${CARD} p-4 flex flex-col gap-3`}>
         {people.map((p) => (
@@ -2409,11 +2409,11 @@ function FindTables({ onBack, onHost, onJoin, userToken, answers, error }) {
     <div key={t.code} className="rounded-3xl bg-[var(--surface)] border border-[var(--line)] p-4 sm:p-5 shadow-[0_8px_0_var(--line)] flex flex-col gap-2">
       <p className="rt-display text-2xl font-extrabold">{t.activity}</p>
       <p className="text-[var(--muted)]">{t.when}<br />{t.place}</p>
-      <p className="font-bold">{t.weekly ? (t.full ? "Full this week" : "Open this week") : t.full ? "Full" : `${t.seats} ${t.seats === 1 ? "seat" : "seats"} open`}</p>
-      {t.weekly && <p className="text-sm text-[var(--muted)]">Every week. {t.weekPeople || 0} {(t.weekPeople || 0) === 1 ? "person" : "people"} this week. You sit with up to 6. Next week can be different people.</p>}
+      <p className="font-bold">{t.weekly ? (t.full ? "This club is full" : "This club is open") : t.full ? "Full" : `${t.seats} ${t.seats === 1 ? "seat" : "seats"} open`}</p>
+      {t.weekly && <p className="text-sm text-[var(--muted)]">Same time every week. {t.weekPeople || 0} {(t.weekPeople || 0) === 1 ? "person" : "people"} this week. You sit at a table of up to 6. Next week, that table can be different people.</p>}
       {(t.people || []).map((p) => <span key={`${p.name}-${p.from}`} className="block">{p.name}{p.from ? ` · ${p.from}` : ""}</span>)}
       {t.share && <p className="rounded-2xl bg-[#FFF6D8] text-[#16251E] px-3 py-2.5 font-semibold">{t.share}</p>}
-      {t.yours ? <Btn ghost onClick={() => join(t.code)}>{joining === t.code ? "Opening…" : "Open this table"}</Btn> : t.full ? null : !t.weekly && started(t) ? <p className="text-sm font-semibold">This table already started.</p> : conflict(t.when_at) ? <p className="text-sm font-semibold">You already have a table within two hours of this one.</p> : <Btn onClick={() => join(t.code)}>{joining === t.code ? "Joining…" : t.weekly ? "Join this week" : "Join this table"}</Btn>}
+      {t.yours ? <Btn ghost onClick={() => join(t.code)}>{joining === t.code ? "Opening…" : "Open this table"}</Btn> : t.full ? null : !t.weekly && started(t) ? <p className="text-sm font-semibold">This table already started.</p> : conflict(t.when_at) ? <p className="text-sm font-semibold">You already have a table within two hours of this one.</p> : <Btn onClick={() => join(t.code)}>{joining === t.code ? "Joining…" : t.weekly ? "Join this club" : "Join this table"}</Btn>}
       {manage && <ManageEvent table={t} userToken={userToken} onChanged={() => setTick((n) => n + 1)} />}
     </div>
   );

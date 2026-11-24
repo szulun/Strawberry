@@ -296,7 +296,7 @@ function weeklyRoomFor_(room, email) {
     if (!open && n < MAX_PEOPLE) open = x;
   });
   if (open) return open;
-  if (filled >= WEEKLY_CAP) throw new Error("This week is full.");
+  if (filled >= WEEKLY_CAP) throw new Error("This club is full this week.");
   return openWeeklyTable_(all[0], slot);
 }
 
