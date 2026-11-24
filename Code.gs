@@ -13,7 +13,7 @@
  */
 
 var TABS = {
-  Rooms: ["room_id", "code", "activity", "when_text", "place", "created_at", "host_person_id", "icebreakers", "when_at", "status", "meet2_activity", "meet2_place", "meet2_at", "meet3_activity", "meet3_place", "meet3_at", "reminded", "meet2_fixed", "meet3_fixed", "m1_started", "m2_started"],
+  Rooms: ["room_id", "code", "activity", "when_text", "place", "created_at", "host_person_id", "icebreakers", "when_at", "status", "meet2_activity", "meet2_place", "meet2_at", "meet3_activity", "meet3_place", "meet3_at", "reminded", "meet2_fixed", "meet3_fixed", "m1_started", "m2_started", "weekly", "series_id", "series_host"],
   People: ["room_id", "person_id", "joined_at", "name", "email", "from_place", "standing", "hook", "home", "secret", "answers_json", "intro", "capsule", "wish", "vote", "slot", "bye", "contact", "guess_target", "guess_topic", "guess_text", "guess_verdict", "left", "next_activity", "meet3_at", "meet3_activity", "meet2_ok", "meet3_ok", "mission_target", "mission_topic"],
   Tokens: ["room_id", "person_id", "token", "is_host"],
   Checkins: ["room_id", "person_id", "name", "again", "met", "reasons", "connected", "why", "group_name", "at", "third"],
@@ -55,6 +55,7 @@ var CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 // Test phase only. Set to false before a real Berkeley round.
 var ALLOW_GMAIL = true;
 var MAX_PEOPLE = 6;
+var WEEKLY_CAP = 30;
 var MEET_SPAN = 2 * 60 * 60 * 1000;
 var COLORS = ["#E2553A", "#1E9A60", "#6A4BE8", "#0E7490", "#C2410C", "#7C3AED"];
 
@@ -208,9 +209,11 @@ function createRoom_(r) {
   var personId = Utilities.getUuid();
   var token = Utilities.getUuid();
   var now = now_();
+  var weekly = r.weekly === true || r.weekly === "1" || r.weekly === "true";
   append_("Rooms", {
     room_id: roomId, code: code, activity: activity, when_text: whenText, place: place,
     created_at: now, host_person_id: personId, when_at: whenAt, status: "open",
+    weekly: weekly ? "1" : "", series_id: weekly ? Utilities.getUuid() : "", series_host: weekly ? profile.email : "",
   });
   append_("People", personRow_(roomId, personId, profile, activity, now));
   append_("Tokens", { room_id: roomId, person_id: personId, token: token, is_host: "1" });
@@ -221,12 +224,81 @@ function createRoom_(r) {
   return { token: token, person_id: personId, room: packed.room, people: packed.people, you: packed.you, messages: packed.messages };
 }
 
+function sameSlot_(a, b) {
+  var ta = new Date(a).getTime();
+  var tb = new Date(b).getTime();
+  return !isNaN(ta) && !isNaN(tb) && Math.abs(ta - tb) < 60 * 1000;
+}
+
+function upcomingWhen_(rooms) {
+  var latest = "";
+  rooms.forEach(function (x) {
+    if (x.when_at && String(x.when_at) > String(latest)) latest = x.when_at;
+  });
+  var d = new Date(latest);
+  if (isNaN(d.getTime())) return "";
+  var guard = 0;
+  while (d.getTime() < Date.now() - 2 * 60 * 1000 && guard < 104) {
+    d = new Date(d.getTime() + 7 * 24 * 60 * 60 * 1000);
+    guard++;
+  }
+  return d.toISOString();
+}
+
+function activeByRoom_() {
+  var peopleBy = {};
+  rows_("People").forEach(function (p) {
+    if (String(p.left) === "1" || !p.room_id) return;
+    if (!peopleBy[p.room_id]) peopleBy[p.room_id] = [];
+    peopleBy[p.room_id].push(p);
+  });
+  return peopleBy;
+}
+
+function openWeeklyTable_(sample, whenAt) {
+  var roomId = Utilities.getUuid();
+  append_("Rooms", {
+    room_id: roomId, code: newCode_(), activity: sample.activity, when_text: prettyWhen_(whenAt), place: sample.place,
+    created_at: now_(), host_person_id: "", when_at: whenAt, status: "open",
+    weekly: "1", series_id: sample.series_id, series_host: sample.series_host || "",
+  });
+  SpreadsheetApp.flush();
+  return rows_("Rooms").filter(function (x) { return x.room_id === roomId; })[0];
+}
+
+function weeklyRoomFor_(room, email) {
+  var all = rows_("Rooms").filter(function (x) {
+    return x.series_id === room.series_id && x.status !== "cancelled" && x.code;
+  });
+  if (!all.length) all = [room];
+  var slot = upcomingWhen_(all);
+  var atSlot = all.filter(function (x) { return sameSlot_(x.when_at, slot); });
+  var peopleBy = activeByRoom_();
+  var who = normEmail_(email);
+  var i;
+  for (i = 0; i < atSlot.length; i++) {
+    var list = peopleBy[atSlot[i].room_id] || [];
+    if (list.some(function (p) { return normEmail_(p.email) === who; })) return atSlot[i];
+  }
+  var open = null;
+  var filled = 0;
+  atSlot.forEach(function (x) {
+    var n = (peopleBy[x.room_id] || []).length;
+    filled += n;
+    if (!open && n < MAX_PEOPLE) open = x;
+  });
+  if (open) return open;
+  if (filled >= WEEKLY_CAP) throw new Error("This week is full.");
+  return openWeeklyTable_(all[0], slot);
+}
+
 function join_(r) {
   var code = String(r.code || "").trim().toUpperCase();
   var room = rows_("Rooms").filter(function (x) { return x.code === code; })[0];
   if (!room) throw new Error("No table with that code.");
   if (room.status === "cancelled") throw new Error("That table was cancelled.");
   var profile = profile_(r);
+  if (String(room.weekly) === "1" && room.series_id) room = weeklyRoomFor_(room, profile.email);
   requireUser_(r, profile.email);
   upsertUser_(profile);
   var all = rows_("People").filter(function (x) { return x.room_id === room.room_id; });
@@ -348,8 +420,14 @@ function listTables_(r) {
     peopleByRoom[p.room_id].push(p);
   });
   var tables = [];
+  var series = {};
   rows_("Rooms").forEach(function (room) {
     if (room.status === "cancelled" || !room.code) return;
+    if (String(room.weekly) === "1" && room.series_id) {
+      if (!series[room.series_id]) series[room.series_id] = [];
+      series[room.series_id].push(room);
+      return;
+    }
     if (!manage && room.when_at) {
       var at = new Date(room.when_at).getTime();
       if (!isNaN(at) && at < Date.now() - 2 * 60 * 60 * 1000) return;
@@ -369,6 +447,38 @@ function listTables_(r) {
       yours: yours,
       people: people.map(function (p) { return { name: p.name, from: p.from_place }; }),
       share: shareLine_(mine, people, user.email),
+    });
+  });
+  Object.keys(series).forEach(function (id) {
+    var rooms = series[id];
+    var slot = upcomingWhen_(rooms);
+    var atSlot = rooms.filter(function (x) { return sameSlot_(x.when_at, slot); });
+    var weekPeople = 0;
+    var mineRoom = null;
+    var openRoom = null;
+    atSlot.forEach(function (x) {
+      var people = peopleByRoom[x.room_id] || [];
+      weekPeople += people.length;
+      if (!mineRoom && people.some(function (p) { return p.email === user.email; })) mineRoom = x;
+      if (!openRoom && people.length < MAX_PEOPLE && people.length) openRoom = x;
+    });
+    if (!openRoom) openRoom = atSlot.filter(function (x) { return (peopleByRoom[x.room_id] || []).length < MAX_PEOPLE; })[0] || null;
+    var shown = mineRoom || openRoom || rooms[0];
+    var shownPeople = (peopleByRoom[shown.room_id] || []);
+    if (!mineRoom && weekPeople >= WEEKLY_CAP) return;
+    tables.push({
+      code: shown.code,
+      activity: shown.activity,
+      when: prettyWhen_(slot),
+      when_at: slot,
+      place: shown.place,
+      seats: Math.max(WEEKLY_CAP - weekPeople, 0),
+      full: weekPeople >= WEEKLY_CAP,
+      yours: !!mineRoom,
+      weekly: true,
+      weekPeople: weekPeople,
+      people: mineRoom ? shownPeople.map(function (p) { return { name: p.name, from: p.from_place }; }) : [],
+      share: mineRoom ? shareLine_(mine, shownPeople, user.email) : "",
     });
   });
   tables.sort(function (a, b) { return String(a.when_at || "9999").localeCompare(String(b.when_at || "9999")); });
@@ -769,6 +879,7 @@ function isHost_(found) {
 
 function assertCanChange_(found) {
   if (isHost_(found) || isFounding_(found.person.email)) return;
+  if (found.room.series_host && normEmail_(found.room.series_host) === normEmail_(found.person.email)) return;
   throw new Error("Only the host can change this table.");
 }
 
@@ -1067,6 +1178,7 @@ function pack_(room, viewerId) {
       meet2_activity: room.meet2_activity || "", meet2_place: room.meet2_place || "", meet2_at: room.meet2_at || "", meet2_fixed: room.meet2_fixed || "",
       meet3_activity: room.meet3_activity || "", meet3_place: room.meet3_place || "", meet3_at: room.meet3_at || "", meet3_fixed: room.meet3_fixed || "",
       m1_started: room.m1_started || "", m2_started: room.m2_started || "",
+      weekly: String(room.weekly) === "1" ? "1" : "",
     },
     you: {
       person_id: viewer.person_id,

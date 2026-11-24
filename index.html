@@ -236,6 +236,7 @@ function applyPack(s, data) {
     meet3Ok: you.meet3_ok != null ? you.meet3_ok : (s.meet3Ok || ""),
     m1Started: room.m1_started === "1",
     m2Started: room.m2_started === "1",
+    weekly: room.weekly === "1",
     people: data.people || s.people,
     messages: Array.isArray(data.messages) ? data.messages : (s.messages || []),
     youName: you.name || s.youName || "",
@@ -456,6 +457,7 @@ const PREMEET_CHAT = [
   { from: "Jordan", text: "I'm in for the crawl. I can walk from campus." },
 ];
 const ACTIVITY_HOOKS = ["Boba crawl", "Cook together", "Karaoke", "Hike", "Escape room", "Picnic"];
+const WEEKLY_ACTIVITIES = ["Badminton", "Hiking", "Bouldering", "Language exchange", "Running", "Picnic"];
 // Round 2 answers do not live in this file. Paste a Google Form formResponse URL and the entry ids.
 // Leave CHECKIN_FORM empty during the demo; answers stay in this browser until the form is connected.
 const CHECKIN_FORM = "";
@@ -1035,6 +1037,7 @@ function GroupReveal({ game, personas, state, next, live, plan, session, onPack,
         <p className="rt-display text-3xl font-extrabold mt-1">{activity.emoji} {activity.title}</p>
         <p className="mt-1 text-white/90">{place}</p>
         <p className="mt-1 text-white/90">{formatWhen(state.whenAt, when)}</p>
+        {state.weekly && <p className="mt-2 text-white/90">This week you sit with this table. Next week, whoever is free can sit somewhere else.</p>}
       </div>
       {shareBlock}
       <TableTools state={state} session={session} onPack={onPack} onLeft={onLeft} />
@@ -1049,6 +1052,7 @@ function GroupReveal({ game, personas, state, next, live, plan, session, onPack,
         <p className="text-xs font-bold uppercase tracking-widest text-white/80">The hook</p>
         <p className="rt-display text-3xl font-extrabold mt-1">{activity.emoji} {activity.title}</p>
         <p className="mt-1 text-white/90">{activity.place}</p>
+        {state.weekly && <p className="mt-2 text-white/90">This week you sit with this table. Next week, whoever is free can sit somewhere else.</p>}
       </div>
       <div className={`${CARD} p-4 flex flex-col gap-3`}>
         {people.map((p) => (
@@ -2406,10 +2410,11 @@ function FindTables({ onBack, onHost, onJoin, userToken, answers, error }) {
     <div key={t.code} className="rounded-3xl bg-[var(--surface)] border border-[var(--line)] p-4 sm:p-5 shadow-[0_8px_0_var(--line)] flex flex-col gap-2">
       <p className="rt-display text-2xl font-extrabold">{t.activity}</p>
       <p className="text-[var(--muted)]">{t.when}<br />{t.place}</p>
-      <p className="font-bold">{t.full ? "Full" : `${t.seats} ${t.seats === 1 ? "seat" : "seats"} open`}</p>
+      <p className="font-bold">{t.weekly ? (t.full ? "Full this week" : "Open this week") : t.full ? "Full" : `${t.seats} ${t.seats === 1 ? "seat" : "seats"} open`}</p>
+      {t.weekly && <p className="text-sm text-[var(--muted)]">Every week. {t.weekPeople || 0} {(t.weekPeople || 0) === 1 ? "person" : "people"} this week. You sit with up to 6. Next week can be different people.</p>}
       {(t.people || []).map((p) => <span key={`${p.name}-${p.from}`} className="block">{p.name}{p.from ? ` · ${p.from}` : ""}</span>)}
       {t.share && <p className="rounded-2xl bg-[#FFF6D8] text-[#16251E] px-3 py-2.5 font-semibold">{t.share}</p>}
-      {t.yours ? <Btn ghost onClick={() => join(t.code)}>{joining === t.code ? "Opening…" : "Open this table"}</Btn> : t.full ? null : started(t) ? <p className="text-sm font-semibold">This table already started.</p> : conflict(t.when_at) ? <p className="text-sm font-semibold">You already have a table within two hours of this one.</p> : <Btn onClick={() => join(t.code)}>{joining === t.code ? "Joining…" : "Join this table"}</Btn>}
+      {t.yours ? <Btn ghost onClick={() => join(t.code)}>{joining === t.code ? "Opening…" : "Open this table"}</Btn> : t.full ? null : !t.weekly && started(t) ? <p className="text-sm font-semibold">This table already started.</p> : conflict(t.when_at) ? <p className="text-sm font-semibold">You already have a table within two hours of this one.</p> : <Btn onClick={() => join(t.code)}>{joining === t.code ? "Joining…" : t.weekly ? "Join this week" : "Join this table"}</Btn>}
       {manage && <ManageEvent table={t} userToken={userToken} onChanged={() => setTick((n) => n + 1)} />}
     </div>
   );
@@ -2506,7 +2511,7 @@ function LiveGate({ initialCode, onJoined, onAccount }) {
   const [user, setUser] = useState(savedUser);
   const [pin, setPin] = useState("");
   const [mode, setMode] = useState(initialCode ? "join" : "");
-  const [form, setForm] = useState({ name: "", email: savedUser ? savedUser.email : "", from: "", standing: "", activity: "", when: "", whenAt: "", place: "", code: initialCode || "" });
+  const [form, setForm] = useState({ name: "", email: savedUser ? savedUser.email : "", from: "", standing: "", activity: "", when: "", whenAt: "", place: "", code: initialCode || "", weekly: false });
   const [cards, setCards] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -2650,13 +2655,20 @@ function LiveGate({ initialCode, onJoined, onAccount }) {
       <Title>{mode === "host" ? "Host a table" : "Join a table"}</Title>
       {mode === "host" ? (
         <>
-          <p className="font-semibold">The activity for this table</p>
+          <p className="font-semibold">Every week</p>
+          <p className="text-sm text-[var(--muted)]">Same time each week. Whoever is free comes. Up to 30 people, sitting in tables of 6. Next week can be different people.</p>
           <div className="flex flex-wrap gap-2">
-            {ACTIVITY_HOOKS.map((a) => (
-              <button key={a} onClick={() => set("activity")(a)} className={`min-h-[44px] rounded-full px-4 py-2 text-sm font-semibold border-2 cursor-pointer ${form.activity === a ? "bg-[var(--coral)] text-white border-[var(--coral)]" : "bg-[var(--surface)] border-[var(--line)]"}`}>{a}</button>
+            {WEEKLY_ACTIVITIES.map((a) => (
+              <button key={a} onClick={() => setForm((f) => ({ ...f, activity: a, weekly: true }))} className={`min-h-[44px] rounded-full px-4 py-2 text-sm font-semibold border-2 cursor-pointer ${form.weekly && form.activity === a ? "bg-[var(--coral)] text-white border-[var(--coral)]" : "bg-[var(--surface)] border-[var(--line)]"}`}>{a}</button>
             ))}
           </div>
-          <Field id="activity" label="Or name it" value={form.activity} set={set("activity")} placeholder="Boba crawl" />
+          <p className="font-semibold">Or one time</p>
+          <div className="flex flex-wrap gap-2">
+            {ACTIVITY_HOOKS.map((a) => (
+              <button key={a} onClick={() => setForm((f) => ({ ...f, activity: a, weekly: false }))} className={`min-h-[44px] rounded-full px-4 py-2 text-sm font-semibold border-2 cursor-pointer ${!form.weekly && form.activity === a ? "bg-[var(--coral)] text-white border-[var(--coral)]" : "bg-[var(--surface)] border-[var(--line)]"}`}>{a}</button>
+            ))}
+          </div>
+          <Field id="activity" label="Or name a one-time activity" value={form.activity} set={(v) => setForm((f) => ({ ...f, activity: v, weekly: WEEKLY_ACTIVITIES.indexOf(v) >= 0 }))} placeholder="Boba crawl" />
           <label className="flex flex-col gap-1 font-semibold">When
             <input id="when" type="datetime-local" value={form.whenAt} onChange={(e) => set("whenAt")(e.target.value)} className="w-full rounded-2xl border-2 border-[var(--line)] bg-[var(--bg)] p-3 text-lg font-normal text-[var(--ink)]" />
           </label>
